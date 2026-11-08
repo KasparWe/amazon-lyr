@@ -141,6 +141,8 @@ async def run_command(args) -> None:  # noqa: ANN001, C901 - flat dispatch is fi
                 market = (
                     get_marketplace(args.marketplace) if args.marketplace else resolve_marketplace()
                 )
+                if args.send_to:
+                    il.check_send_target(args.send_to)
                 il.print_instructions(market, args.send_to)
                 cookies = await il.interactive_login(market, timeout=args.timeout)
             except (ValueError, AmazonError) as e:

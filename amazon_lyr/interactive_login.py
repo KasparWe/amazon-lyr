@@ -44,6 +44,7 @@ CHROME_CANDIDATES = (
 # can't be parsed as an ssh option.
 _SSH_HOST_RE = re.compile(r"[A-Za-z0-9_.][A-Za-z0-9_.@:-]{0,253}")
 _REMOTE_LOGIN = 'PATH="$HOME/.local/bin:$PATH" amazon-lyr login --cookies-file -'
+_REMOTE_VERSION = 'PATH="$HOME/.local/bin:$PATH" amazon-lyr --version'
 
 
 class LoginTimeoutError(AmazonError):
@@ -217,10 +218,34 @@ async def interactive_login(market: Marketplace, timeout: float = 600) -> dict[s
         log.unlink(missing_ok=True)
 
 
-def send_cookies_over_ssh(cookies: dict[str, str], host: str) -> str:
-    """Import cookies on ``host`` via ``amazon-lyr login --cookies-file -`` over ssh."""
+def _check_host(host: str) -> None:
     if not _SSH_HOST_RE.fullmatch(host):
         raise AmazonError(f"Invalid ssh destination {host!r} (use host, user@host or an alias).")
+
+
+def check_send_target(host: str) -> None:
+    """Fail before the user signs in if ``host`` can't receive the session."""
+    _check_host(host)
+    try:
+        result = subprocess.run(
+            ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=15", "--", host, _REMOTE_VERSION],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        raise AmazonError(f"Can't reach {host} over ssh: {e}") from e
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()[-300:]
+        raise AmazonError(
+            f"Can't send the session to {host}: {detail}. Nothing was opened. If you're "
+            f"already on {host}, run the command without --send-to."
+        )
+
+
+def send_cookies_over_ssh(cookies: dict[str, str], host: str) -> str:
+    """Import cookies on ``host`` via ``amazon-lyr login --cookies-file -`` over ssh."""
+    _check_host(host)
     result = subprocess.run(
         ["ssh", "-o", "BatchMode=yes", "--", host, _REMOTE_LOGIN],
         input=json.dumps(cookies),

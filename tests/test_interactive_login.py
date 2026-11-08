@@ -169,6 +169,7 @@ def test_cli_interactive_send_to_does_not_save_locally(isolated_config, monkeypa
         return {"at-acbca": "t", "session-id": "s", "ubid-acbca": "u"}
 
     sent = {}
+    monkeypatch.setattr(il, "check_send_target", lambda h: None)
     monkeypatch.setattr(il, "interactive_login", fake_login)
     monkeypatch.setattr(
         il, "send_cookies_over_ssh", lambda c, h: sent.update(c=c, h=h) or "remote ok\n"
@@ -210,3 +211,23 @@ async def test_chrome_crash_reports_its_stderr_and_ssh_hint(tmp_path, monkeypatc
     assert "window server" in msg and "mach_o" not in msg
     assert "Google Chrome 119" in msg
     assert "SSH session" in msg and "--send-to" in msg
+
+
+def test_send_to_unreachable_host_fails_before_chrome_opens(isolated_config, monkeypatch, capsys):
+    def fake_run(cmd, **kw):
+        assert cmd[-1].endswith("amazon-lyr --version")
+        return type(
+            "R",
+            (),
+            {"returncode": 255, "stdout": "", "stderr": "ssh: Could not resolve hostname hermes"},
+        )()
+
+    async def must_not_open(*a, **k):
+        raise AssertionError("Chrome must not open when --send-to can't be reached")
+
+    monkeypatch.setattr(il.subprocess, "run", fake_run)
+    monkeypatch.setattr(il, "interactive_login", must_not_open)
+    with pytest.raises(SystemExit):
+        main(["login", "--interactive", "--marketplace", "amazon.ca", "--send-to", "hermes"])
+    out = capsys.readouterr().out
+    assert "Could not resolve hostname" in out and "without --send-to" in out
