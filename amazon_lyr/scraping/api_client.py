@@ -135,6 +135,10 @@ class AmazonClient:
         """Raise mapped errors for captcha / signin / 404 responses."""
         body = resp.text[:20000]
         final_url = str(getattr(resp, "url", ""))
+        # Amazon's 404 page also mentions api-services-support / automated access,
+        # so check the status first or a wrong path reads as a bot wall.
+        if resp.status_code == 404:
+            raise NotFoundError("Page not found (404)")
         if any(
             marker in body
             for marker in (
@@ -150,8 +154,6 @@ class AmazonClient:
         # page for account-area routes when the session is dead.
         if SIGNIN_MARKER in final_url or 'action="/ap/signin"' in resp.text:
             raise SessionExpiredError("Amazon redirected to sign-in")
-        if resp.status_code == 404:
-            raise NotFoundError("Page not found (404)")
 
     def _guard_request(self, method: str, url: str, data: dict | None) -> None:
         """Last line of defence, independent of which tool/method built the request.
@@ -522,7 +524,7 @@ class AmazonClient:
             raise ParseError(
                 "Checkout workflow did not reach a confirmation within 10 steps. "
                 "Nothing appears to have been ordered — verify at "
-                f"{self._base}/gp/your-orders/orders before retrying."
+                f"{self._base}/your-orders/orders before retrying."
             )
         result = {"status": "placed", **placed}
         if not placed.get("order_id"):

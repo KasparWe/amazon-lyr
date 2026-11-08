@@ -84,3 +84,58 @@ async def test_update_qty_explains_js_layout(monkeypatch):
     with pytest.raises(AmazonError, match="add_to_cart with the new quantity"):
         await client.update_cart_quantity("quantityBox", 2)
     assert fake.calls == []
+
+
+ORDERS_2026 = """
+<div class="order-card js-order-card"><div class="a-box order-header"><ul class="order-header__header-list">
+  <li class="order-header__header-list-item"><span class="a-color-secondary a-text-caps">Order placed</span>
+    <span class="a-size-base a-color-secondary aok-break-word">November 7, 2026</span></li>
+  <li class="order-header__header-list-item"><span class="a-color-secondary a-text-caps">Total</span>
+    <span class="a-size-base a-color-secondary aok-break-word">$12.75</span></li>
+  <li class="order-header__header-list-item"><span class="a-color-secondary a-text-caps">Ship to</span>
+    <span class="a-popover-trigger">Jane Doe</span></li>
+</ul></div>
+<div class="delivery-box"><span class="yohtmlc-delivery-status">Delivered</span></div>
+<div class="yohtmlc-item"><a href="/dp/B000000001">Glass Kettle</a></div>
+<span>Order # 701-1234567-1234567</span></div>
+"""
+
+WISHLIST_2026 = """
+<ul><li class="a-spacing-base g-item-sortable" data-itemid="I1"
+     data-reposition-action-params='{"itemExternalId":"ASIN:B000000009|A2EUQ1WTGCTBG2"}'>
+  <a id="itemName_I1ABCDEF" href="/dp/B000000009/?coliid=I1">Gooseneck Kettle</a>
+  <span class="a-price"><span class="a-offscreen">$45.99</span></span>
+</li></ul>
+"""
+
+
+def test_parse_orders_2026_header_list():
+    from amazon_lyr.scraping.parsers import parse_orders
+
+    (order,) = parse_orders(ORDERS_2026)["orders"]
+    assert order["order_id"] == "701-1234567-1234567"
+    assert order["placed_date"] == "November 7, 2026"
+    assert order["total"] == "$12.75" and order["ship_to"] == "Jane Doe"
+    assert order["status"] == "Delivered"
+
+
+def test_parse_wishlist_2026_list_items():
+    from amazon_lyr.scraping.parsers import parse_wishlist
+
+    w = parse_wishlist(WISHLIST_2026)
+    assert w["item_count"] == 1
+    assert w["items"][0] == {
+        "asin": "B000000009",
+        "name": "Gooseneck Kettle",
+        "price": "$45.99",
+        "price_value": 45.99,
+    }
+
+
+async def test_404_with_automated_access_text_is_not_found_not_captcha(monkeypatch):
+    from amazon_lyr.exceptions import NotFoundError
+
+    page = "<html>Page Not Found. To discuss automated access to Amazon data please contact api-services-support@amazon.com</html>"
+    client, _ = _client(monkeypatch, [FakeResponse(page, status_code=404)])
+    with pytest.raises(NotFoundError):
+        await client.get_html("/gp/your-orders/orders")

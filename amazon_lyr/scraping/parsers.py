@@ -383,6 +383,17 @@ def parse_orders(html: str) -> dict:
         placed = _text(card.select_one(".order-info span.label")) or None
         header_cols = [_text(c) for c in card.select(".order-header .a-column span")]
         total = next((t for t in header_cols if t and "$" in t), None)
+        # Current layout: label/value pairs in li.order-header__header-list-item.
+        fields: dict[str, str | None] = {}
+        for li in card.select("li.order-header__header-list-item"):
+            label = _text(li.select_one(".a-text-caps"))
+            value = _text(li.select_one(".a-size-base, .yohtmlc-recipient, .a-popover-trigger"))
+            if label:
+                fields[label.lower()] = value
+        if fields:
+            placed = "Order placed"
+            header_cols = [fields.get("order placed"), fields.get("total"), fields.get("ship to")]
+            total = fields.get("total")
         items: list[dict] = []
         for item in card.select(".yohtmlc-item a, .a-fixed-left-grid .yohtmlc-product-title"):
             name = _text(item)
@@ -425,12 +436,17 @@ def parse_orders(html: str) -> dict:
 def parse_wishlist(html: str) -> dict:
     soup = _soup(html)
     items: list[dict] = []
-    for block in soup.select("div.g-item-block"):
+    blocks = soup.select("li.g-item-sortable") or soup.select("div.g-item-block")
+    for block in blocks:
         link = block.select_one('a[id^="itemName_"]')
         price_text = _text(
             block.select_one("span.a-price .a-offscreen, .itemPriceRow .a-color-price")
         )
-        asin_match = re.search(r"itemName_([A-Z0-9]{10})", str(link.get("id")) if link else "")
+        asin_match = (
+            re.search(r"/dp/([A-Z0-9]{10})", str(link.get("href", "")) if link else "")
+            or re.search(r"ASIN:([A-Z0-9]{10})", str(block.get("data-reposition-action-params")))
+            or re.search(r"itemName_([A-Z0-9]{10})$", str(link.get("id")) if link else "")
+        )
         items.append(
             {
                 "asin": asin_match.group(1) if asin_match else None,
