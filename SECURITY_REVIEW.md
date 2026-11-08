@@ -71,3 +71,17 @@ A second pass over the hardening commit found one gap, now fixed:
   301/302/303 drop the request body like a browser. Guard refusals are also no
   longer retried and re-wrapped as generic errors. Covered by new tests in
   `tests/test_kill_switch.py`.
+
+## Interactive login (added 2026-11-08)
+
+`amazon-lyr login --interactive` replaces the broken `--browser` import without
+reading your everyday browser's cookie store. It starts the installed Chrome
+with a new temporary profile (mode 700) and DevTools on a random loopback port,
+waits for you to sign in yourself, reads only the storefront's cookies via
+`Storage.getCookies`, then closes Chrome and deletes the profile (also on
+timeout or error). While the window is open, other local processes running as
+you could reach that DevTools port — the same trust level as the cookie file
+itself. `--send-to HOST` pipes the cookies to `amazon-lyr login --cookies-file -`
+over `ssh -o BatchMode=yes` stdin (not argv), and the host name is validated so
+it can't be read as an ssh option.
+

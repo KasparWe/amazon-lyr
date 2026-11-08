@@ -9,8 +9,9 @@ import sys
 from amazon_lyr import __version__
 from amazon_lyr.authentication import get_auth_status
 from amazon_lyr.cookie_import import cookies_from_json, import_from_browser
+from amazon_lyr.exceptions import AmazonError
 from amazon_lyr.logging_config import logger
-from amazon_lyr.marketplace import resolve_marketplace
+from amazon_lyr.marketplace import get_marketplace, resolve_marketplace
 from amazon_lyr.session_state import clear_cookies, save_cookies
 
 # ── TOON helpers ──────────────────────────────────────────────────────────
@@ -133,11 +134,27 @@ async def run_command(args) -> None:  # noqa: ANN001, C901 - flat dispatch is fi
 
     if cmd == "login":
         cookies: dict[str, str] = {}
-        if args.cookies_file:
+        if getattr(args, "interactive", False):
+            from amazon_lyr import interactive_login as il  # noqa: PLC0415
+
+            try:
+                market = (
+                    get_marketplace(args.marketplace) if args.marketplace else resolve_marketplace()
+                )
+                il.print_instructions(market, args.send_to)
+                cookies = await il.interactive_login(market, timeout=args.timeout)
+            except (ValueError, AmazonError) as e:
+                axi_error(str(e), hint="Retry with: amazon-lyr login --interactive")
+        elif args.cookies_file:
             from pathlib import Path
 
             try:
-                cookies = cookies_from_json(json.loads(Path(args.cookies_file).read_text()))
+                raw = (
+                    sys.stdin.read()
+                    if args.cookies_file == "-"
+                    else Path(args.cookies_file).read_text()
+                )
+                cookies = cookies_from_json(json.loads(raw))
             except (OSError, json.JSONDecodeError, ValueError) as e:
                 axi_error(
                     f"Could not read cookies file {args.cookies_file!r}: {e}",
@@ -161,6 +178,14 @@ async def run_command(args) -> None:  # noqa: ANN001, C901 - flat dispatch is fi
                 f"(the {market.domain} login token).",
                 hint=f"Log in to {market.domain} in your browser, export again, then retry.",
             )
+        if getattr(args, "send_to", None):
+            from amazon_lyr.interactive_login import send_cookies_over_ssh  # noqa: PLC0415
+
+            try:
+                print(send_cookies_over_ssh(cookies, args.send_to), end="")
+            except AmazonError as e:
+                axi_error(str(e), hint=f"Check `ssh {args.send_to} amazon-lyr --version` works.")
+            return
         from amazon_lyr.dependencies import reset_client  # noqa: PLC0415
 
         reset_client()  # drop any cached client built from stale cookies

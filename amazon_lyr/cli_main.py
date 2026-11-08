@@ -46,11 +46,30 @@ def main(argv: list[str] | None = None) -> None:
 
     sub.add_parser("status", help="Show auth status", parents=[common])
 
-    p_login = sub.add_parser("login", help="Import Amazon cookies from browser or JSON file")
+    p_login = sub.add_parser(
+        "login", help="Sign in via a Chrome window, or import cookies from a JSON file"
+    )
+    p_login.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Open Chrome with a temporary profile, sign in yourself, capture the session",
+    )
+    p_login.add_argument(
+        "--marketplace", default=None, help="Storefront for --interactive, e.g. amazon.ca"
+    )
+    p_login.add_argument(
+        "--send-to",
+        default=None,
+        metavar="SSH_HOST",
+        help="Import the session on this ssh host instead of saving it here",
+    )
+    p_login.add_argument(
+        "--timeout", type=int, default=600, help="Seconds to wait for sign-in (default 600)"
+    )
+    p_login.add_argument("--cookies-file", default=None, help="Cookies JSON file ('-' reads stdin)")
     p_login.add_argument(
         "--browser", default=None, help="chrome|brave|firefox|edge|zen (needs obscura extra)"
     )
-    p_login.add_argument("--cookies-file", default=None, help="Path to cookies JSON file")
 
     sub.add_parser("logout", help="Delete stored cookies")
 

@@ -42,6 +42,7 @@ amazon_lyr/
 ├── dependencies.py    # singleton AmazonClient accessor
 ├── authentication.py  # validate_session / get_auth_status
 ├── cookie_import.py   # obscura-core extractor (optional extra) / JSON file
+├── interactive_login.py # login --interactive: Chrome temp profile + CDP cookie capture; --send-to ssh
 ├── session_state.py   # cookie persistence (~/.config/amazon-lyr/cookies.json)
 ├── constants.py       # endpoints, captcha markers, retry policy, kill switches
 ├── marketplace.py     # storefront allowlist → base URL, cookie names/domain

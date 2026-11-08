@@ -15,8 +15,8 @@ session.
 ## Quick Start
 
 ```bash
-# Import an exported Amazon cookie JSON (one-time; storefront is auto-detected)
-amazon-lyr login --cookies-file cookies.json
+# Sign in yourself in a Chrome window (one-time; temp profile, wiped after)
+amazon-lyr login --interactive --marketplace amazon.ca
 
 # Run the MCP server
 amazon-lyr serve
@@ -54,7 +54,13 @@ amazon-lyr serve --transport streamable-http --port 8000
 ## Authentication
 
 ```bash
-# JSON export of your Amazon cookies (browser import is broken)
+# Sign in in a Chrome window; the session is captured, the profile deleted
+amazon-lyr login --interactive --marketplace amazon.ca
+
+# Same, but store the session on a remote MCP host instead of here
+amazon-lyr login --interactive --marketplace amazon.ca --send-to myserver
+
+# Or a JSON cookie export (file, or - for stdin)
 amazon-lyr login --cookies-file cookies.json
 
 # Check status

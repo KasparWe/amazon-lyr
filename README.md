@@ -15,7 +15,7 @@
 > See [SECURITY_REVIEW.md](SECURITY_REVIEW.md).
 >
 > Install from this repo, not upstream (otherwise `amazon-lyr update` would pull
-> the unhardened code), and log in with `--cookies-file` (`--browser` is broken).
+> the unhardened code), and log in with `login --interactive` (`--browser` is broken).
 > Works with amazon.com, amazon.ca and other storefronts — picked from your cookies.
 
 <h1 align="center">amazon-lyr</h1>
@@ -64,9 +64,15 @@ browser cookies ──▶ AmazonClient (curl_cffi, captcha-aware)
                                                    (readOnly / destructive annotations)
 ```
 
-Auth is your own session: `amazon-lyr login --cookies-file` imports a JSON
-export of your Amazon cookies (any cookie-export extension works, e.g.
-Cookie-Editor's JSON export). Reads need the storefront's login token
+Auth is your own session. `amazon-lyr login --interactive` opens your
+installed Google Chrome with a fresh temporary profile on the storefront; you
+sign in yourself (password, one-time code, CAPTCHA — nothing is automated),
+the session cookies for that storefront are read over Chrome's local DevTools
+port, and the window closes and the temporary profile is deleted. Add
+`--send-to <ssh-host>` to sign in on this machine but store the session on a
+server (it is piped over ssh stdin and never saved locally). Alternatively,
+`login --cookies-file` imports a JSON export (e.g. Cookie-Editor), or `-` for
+stdin. Reads need the storefront's login token
 (`at-main` on amazon.com, `at-acbca` on amazon.ca); cart, wishlist and orders also need the
 session cookies (`session-id`, `ubid-main` / `ubid-acbca`). Browser import via the optional
 `obscura` extra is broken and not recommended (see the security review).
@@ -84,7 +90,9 @@ git clone https://github.com/KasparWe/amazon-lyr && bash amazon-lyr/install.sh
 Then authenticate once and serve:
 
 ```bash
-amazon-lyr login --cookies-file cookies.json # exported Amazon cookies
+amazon-lyr login --interactive --marketplace amazon.ca   # sign in in a Chrome window
+# or sign in here, keep the session on a server running the MCP:
+amazon-lyr login --interactive --marketplace amazon.ca --send-to myserver
 amazon-lyr search "mechanical keyboard"      # shell works immediately
 amazon-lyr serve                             # MCP server (stdio)
 ```

@@ -76,7 +76,7 @@ verify_install() {
 
   Get started:
     ${BIN}                          # home view + next steps
-    ${BIN} login --cookies-file cookies.json   # exported amazon.com cookies
+    ${BIN} login --interactive          # sign in in a Chrome window (one-time)
     ${BIN} serve                    # start the MCP server
 
   MCP config:
