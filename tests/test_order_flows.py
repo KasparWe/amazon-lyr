@@ -14,6 +14,10 @@ from conftest import (
 from amazon_lyr.exceptions import AmazonError, ParseError, SessionExpiredError
 from amazon_lyr.scraping.api_client import AmazonClient
 
+# Upstream money-flow tests: run with the kill switches flipped on.
+pytestmark = pytest.mark.usefixtures("money_ops_enabled")
+
+
 REVIEWS_PAGE_1 = """
 <div data-hook="review" id="R1">
   <a data-hook="review-title"><span>Battery great</span></a>

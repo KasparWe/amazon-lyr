@@ -13,6 +13,12 @@ def _serve(args) -> None:  # noqa: ANN001 - argparse Namespace
     transport = args.transport or os.getenv("TRANSPORT", "stdio")
     if transport == "streamable-http":
         host = args.host or os.getenv("HOST", "127.0.0.1")
+        if host not in {"127.0.0.1", "localhost", "::1"}:
+            # The HTTP transport has no authentication; anyone who can reach it
+            # can drive your Amazon session.
+            raise SystemExit(
+                f"Refusing to serve unauthenticated MCP on non-loopback host {host!r}."
+            )
         port = int(args.port or os.getenv("PORT", "8000"))
         path = args.http_path or os.getenv("HTTP_PATH", "/mcp")
         mcp.run(transport="http", host=host, port=port, path=path)

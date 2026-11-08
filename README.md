@@ -5,6 +5,16 @@
   <img src="https://img.shields.io/badge/license-MIT-059669?style=flat" alt="MIT">
 </p>
 
+> [!IMPORTANT]
+> **Private hardened fork.** Buying, order cancellation and returns are switched
+> off by code constants in `amazon_lyr/constants.py` (`ORDERING_ENABLED`,
+> `ORDER_CANCEL_ENABLED`, `RETURNS_ENABLED` — all `False`). The tools are not
+> registered and the HTTP layer refuses any checkout request. Search, product,
+> reviews, cart and wishlist work as normal. See [SECURITY_REVIEW.md](SECURITY_REVIEW.md).
+>
+> Install from this repo, not upstream (otherwise `amazon-lyr update` would pull
+> the unhardened code), and log in with `--cookies-file` (`--browser` is broken upstream).
+
 <h1 align="center">amazon-lyr</h1>
 
 <p align="center">

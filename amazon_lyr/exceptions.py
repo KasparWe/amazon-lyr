@@ -29,3 +29,7 @@ class NotFoundError(AmazonError):
 
 class ParseError(AmazonError):
     """Page structure changed and parsing failed."""
+
+
+class OrderingDisabledError(AmazonError):
+    """A money-moving action was attempted while its kill switch is off."""

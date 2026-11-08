@@ -3,6 +3,22 @@
 from __future__ import annotations
 
 import os
+from typing import Final
+
+# ── Money-movement kill switches ─────────────────────────────────────────
+# These are deliberately plain code constants — NOT env vars, CLI flags, or
+# tool parameters — so nothing an agent can send over MCP (and no prompt
+# injection hidden in a product page or review) can turn them on. Enabling
+# one requires editing this file and reinstalling the package.
+#
+# While False:
+#   * the matching MCP tools are not registered at all (agents can't see them),
+#   * the AmazonClient methods refuse before making any request, and
+#   * the transport layer refuses any request that looks like checkout /
+#     order placement / buy-now (see api_client._guard_request).
+ORDERING_ENABLED: Final[bool] = False  # checkout_preview + place_order
+ORDER_CANCEL_ENABLED: Final[bool] = False  # cancel_order
+RETURNS_ENABLED: Final[bool] = False  # initiate_return
 
 DEFAULT_MARKETPLACE = os.getenv("AMAZON_MARKETPLACE", "https://www.amazon.com")
 

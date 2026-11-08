@@ -8,6 +8,7 @@ from typing import Literal
 
 from fastmcp import FastMCP
 
+from amazon_lyr import constants
 from amazon_lyr.dependencies import get_amazon_client
 from amazon_lyr.error_handler import handle_api_error
 from amazon_lyr.tools.shopping import _require_write_session
@@ -27,6 +28,12 @@ RETURN_REASON = Literal[
 
 
 def register_order_mgmt_tools(mcp: FastMCP) -> None:
+    """Read tools always; money-moving tools only when their kill switch is on.
+
+    A disabled tool is never registered, so an agent can't see it in
+    list_tools and can't be talked into calling it.
+    """
+
     @mcp.tool(annotations={"readOnlyHint": True})
     async def get_order_details(order_id: str) -> dict:
         """Full detail for one order: items+prices, totals, payment method,
@@ -56,6 +63,15 @@ def register_order_mgmt_tools(mcp: FastMCP) -> None:
         except Exception as e:
             handle_api_error(e)
 
+    if constants.RETURNS_ENABLED:
+        _register_initiate_return(mcp)
+    if constants.ORDER_CANCEL_ENABLED:
+        _register_cancel_order(mcp)
+    if constants.ORDERING_ENABLED:
+        _register_checkout(mcp)
+
+
+def _register_initiate_return(mcp: FastMCP) -> None:
     @mcp.tool(
         annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False}
     )
@@ -75,6 +91,8 @@ def register_order_mgmt_tools(mcp: FastMCP) -> None:
         except Exception as e:
             handle_api_error(e)
 
+
+def _register_cancel_order(mcp: FastMCP) -> None:
     @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False})
     async def cancel_order(order_id: str) -> dict:
         """Cancel an unshipped order entirely. Only works before shipment;
@@ -86,7 +104,10 @@ def register_order_mgmt_tools(mcp: FastMCP) -> None:
         except Exception as e:
             handle_api_error(e)
 
-    @mcp.tool(annotations={"readOnlyHint": True})
+
+def _register_checkout(mcp: FastMCP) -> None:
+    # Not readOnly: it POSTs through checkout steps (address/shipping/payment).
+    @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
     async def checkout_preview() -> dict:
         """Walk the cart through checkout WITHOUT buying: returns the review-step
         summary (totals, preselected address/payment, verification flags). Show

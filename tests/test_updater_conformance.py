@@ -64,8 +64,14 @@ def _updater():
             # For a ``<pkg>[/sub]/updater.py`` layout the dir parts above the
             # file name are exactly the package path.
             dirs = hit.relative_to(repo).parts[:-1]
-            if not dirs or dirs[0] in ("build", "dist", "site-packages",
-                                      "__pycache__", "tests", ".venv"):
+            if not dirs or dirs[0] in (
+                "build",
+                "dist",
+                "site-packages",
+                "__pycache__",
+                "tests",
+                ".venv",
+            ):
                 continue
             package_dir = hit.parent
             # ``<pkg>/updater.py`` (repo root) or ``src/<pkg>/updater.py``
@@ -202,32 +208,44 @@ class TestManagerDetection:
         home = tmp_path / "home"
         self._isolate(monkeypatch, tmp_path, home)
         fake_venv = tmp_path / "venv"
-        monkeypatch.setattr(up_ := _updater(), "sys", SimpleNamespace(
-            prefix=str(fake_venv), base_prefix="/usr",
-            executable=sys.executable,
-        ))
+        monkeypatch.setattr(
+            up_ := _updater(),
+            "sys",
+            SimpleNamespace(
+                prefix=str(fake_venv),
+                base_prefix="/usr",
+                executable=sys.executable,
+            ),
+        )
         dist = _FakeDistribution(str(fake_venv / "lib" / "site-packages"))
         owner, reason = up_._manager(dist, "sample-cli")
-        assert (
-            owner == "pip-venv" and reason is None
-        ), "a venv pip install must be owned by pip-venv"
+        assert owner == "pip-venv" and reason is None, (
+            "a venv pip install must be owned by pip-venv"
+        )
 
     def test_user_site_pip_install_is_recognized(self, monkeypatch, tmp_path):
         home = tmp_path / "home"
         self._isolate(monkeypatch, tmp_path, home)
         up = _updater()
-        monkeypatch.setattr(up, "sys", SimpleNamespace(
-            prefix="/usr", base_prefix="/usr", executable=sys.executable,
-        ))
         monkeypatch.setattr(
-            up.site, "getusersitepackages",
+            up,
+            "sys",
+            SimpleNamespace(
+                prefix="/usr",
+                base_prefix="/usr",
+                executable=sys.executable,
+            ),
+        )
+        monkeypatch.setattr(
+            up.site,
+            "getusersitepackages",
             lambda: str(tmp_path / "user-site"),
         )
         dist = _FakeDistribution(str(tmp_path / "user-site" / "sample_cli-1.0.dist-info"))
         owner, reason = up._manager(dist, "sample-cli")
-        assert (
-            owner == "pip-user" and reason is None
-        ), "a user-site pip install must be owned by pip-user"
+        assert owner == "pip-user" and reason is None, (
+            "a user-site pip install must be owned by pip-user"
+        )
 
 
 # ── safe refusals ──────────────────────────────────────────────────────────
@@ -289,18 +307,23 @@ class TestCheckParsing:
         self._isolate_paths(monkeypatch, tmp_path)
         output = "sample-cli v1.0.0 [latest: 2.0.0]\n- sample-cli\n"
         monkeypatch.setattr(
-            up.subprocess, "run", lambda *a, **kw: _fake_run(output),
+            up.subprocess,
+            "run",
+            lambda *a, **kw: _fake_run(output),
         )
         outdated, available = up._check("uv", "sample-cli")
-        assert outdated is True and available == "2.0.0", \
+        assert outdated is True and available == "2.0.0", (
             "uv's [latest: vX.Y.Z] line must report an available update"
+        )
 
     def test_pip_json_output_reports_update(self, monkeypatch, tmp_path):
         up = _updater()
         self._isolate_paths(monkeypatch, tmp_path)
         rows = json.dumps([{"name": "sample-cli", "latest_version": "3.1.0"}])
         monkeypatch.setattr(
-            up.subprocess, "run", lambda *a, **kw: _fake_run(rows),
+            up.subprocess,
+            "run",
+            lambda *a, **kw: _fake_run(rows),
         )
         outdated, available = up._check("pip-venv", "sample-cli")
         assert outdated is True and available == "3.1.0", "pip JSON must report the latest version"
@@ -310,7 +333,9 @@ class TestCheckParsing:
         self._isolate_paths(monkeypatch, tmp_path)
         rows = json.dumps([{"name": "other-tool", "latest_version": "9.9.9"}])
         monkeypatch.setattr(
-            up.subprocess, "run", lambda *a, **kw: _fake_run(rows),
+            up.subprocess,
+            "run",
+            lambda *a, **kw: _fake_run(rows),
         )
         outdated, available = up._check("pip-venv", "sample-cli")
         assert outdated is False and available is None, "an absent row means already current"
@@ -320,7 +345,9 @@ class TestCheckParsing:
         self._isolate_paths(monkeypatch, tmp_path)
         output = "sample-cli 1.0.0 (latest: 2.4.0)\n  other-tool 5.0.0\n"
         monkeypatch.setattr(
-            up.subprocess, "run", lambda *a, **kw: _fake_run(output),
+            up.subprocess,
+            "run",
+            lambda *a, **kw: _fake_run(output),
         )
         outdated, available = up._check("pipx", "sample-cli")
         assert outdated is True and available == "2.4.0", "pipx's latest label must be read"
@@ -329,7 +356,9 @@ class TestCheckParsing:
         up = _updater()
         self._isolate_paths(monkeypatch, tmp_path)
         monkeypatch.setattr(
-            up.subprocess, "run", lambda *a, **kw: _fake_run("", returncode=1, stderr="boom"),
+            up.subprocess,
+            "run",
+            lambda *a, **kw: _fake_run("", returncode=1, stderr="boom"),
         )
         outdated, available = up._check("uv", "sample-cli")
         assert outdated is None and available is None, "a failing manager must be indeterminate"
@@ -349,7 +378,9 @@ class TestCheckParsing:
         up = _updater()
         self._isolate_paths(monkeypatch, tmp_path)
         monkeypatch.setattr(
-            up.subprocess, "run", lambda *a, **kw: _fake_run("not json at all"),
+            up.subprocess,
+            "run",
+            lambda *a, **kw: _fake_run("not json at all"),
         )
         outdated, available = up._check("pip-venv", "sample-cli")
         assert outdated is None and available is None, "unparseable JSON must be indeterminate"
@@ -362,20 +393,23 @@ class TestDelegation:
     def test_uv_owner_delegates_to_uv_tool_upgrade(self):
         up = _updater()
         command = up._upgrade_command("uv", "sample-cli", None)
-        assert command == ["uv", "tool", "upgrade", "sample-cli"], \
+        assert command == ["uv", "tool", "upgrade", "sample-cli"], (
             "a uv owner must delegate to `uv tool upgrade`"
+        )
 
     def test_pipx_owner_delegates_to_pipx_upgrade(self):
         up = _updater()
         command = up._upgrade_command("pipx", "sample-cli", None)
-        assert command == ["pipx", "upgrade", "sample-cli"], \
+        assert command == ["pipx", "upgrade", "sample-cli"], (
             "a pipx owner must delegate to `pipx upgrade`"
+        )
 
     def test_pip_owner_delegates_to_module_pip_upgrade(self):
         up = _updater()
         command = up._upgrade_command("pip-venv", "sample-cli", None)
-        assert command[-3:] == ["install", "--upgrade", "sample-cli"], \
+        assert command[-3:] == ["install", "--upgrade", "sample-cli"], (
             "a pip owner must delegate to `python -m pip install --upgrade`"
+        )
         assert command[0] == sys.executable, "the upgrade must run on this interpreter"
 
 
@@ -412,8 +446,15 @@ class TestRunUpdate:
         code = up.run_update(["--check", "--json"], application="sample-cli", package="sample-cli")
         payload = json.loads(capsys.readouterr().out)
         assert code == 1
-        for field in ("application", "installed_version", "available_version",
-                      "channel", "action", "result", "service_restarted"):
+        for field in (
+            "application",
+            "installed_version",
+            "available_version",
+            "channel",
+            "action",
+            "result",
+            "service_restarted",
+        ):
             assert field in payload, f"JSON result must carry a stable {field}"
         assert payload["application"] == "sample-cli"
         assert payload["result"] == "refused" and payload["action"] == "check"
@@ -423,7 +464,8 @@ class TestRunUpdate:
         up = _updater()
         self._strip_env(monkeypatch, tmp_path)
         monkeypatch.setattr(
-            up.importlib.metadata, "distribution",
+            up.importlib.metadata,
+            "distribution",
             lambda name: _FakeDistribution("/opt/tool", version="1.0.0"),
         )
         monkeypatch.setattr(up, "_manager", lambda d, p: ("uv", None))
@@ -447,12 +489,14 @@ class TestRunUpdate:
         up = _updater()
         self._strip_env(monkeypatch, tmp_path)
         monkeypatch.setattr(
-            up.importlib.metadata, "distribution",
+            up.importlib.metadata,
+            "distribution",
             lambda name: _FakeDistribution("/opt/tool", version="1.0.0"),
         )
         monkeypatch.setattr(up, "_manager", lambda d, p: ("uv", None))
         monkeypatch.setattr(
-            up.subprocess, "run",
+            up.subprocess,
+            "run",
             lambda *a, **kw: _fake_run("", returncode=1, stderr="uv exploded"),
         )
         code = up.run_update(["--json"], application="sample-cli", package="sample-cli")
@@ -465,7 +509,8 @@ class TestRunUpdate:
         up = _updater()
         self._strip_env(monkeypatch, tmp_path)
         monkeypatch.setattr(
-            up.importlib.metadata, "distribution",
+            up.importlib.metadata,
+            "distribution",
             lambda name: _FakeDistribution("/opt/tool", version="1.0.0"),
         )
         monkeypatch.setattr(up.importlib.metadata, "version", lambda name: "2.0.0")
@@ -480,7 +525,8 @@ class TestRunUpdate:
     def _unsafe_source(self, monkeypatch, up, direct_url):
         """A pip-owned install whose source the helper refuses to upgrade in place."""
         monkeypatch.setattr(
-            up.importlib.metadata, "distribution",
+            up.importlib.metadata,
+            "distribution",
             lambda name: _FakeDistribution("/opt/tool", direct_url=direct_url, version="1.0.0"),
         )
         monkeypatch.setattr(up, "_manager", lambda d, p: ("pip-venv", None))
@@ -520,10 +566,9 @@ class TestRunUpdate:
         up = _updater()
         self._strip_env(monkeypatch, tmp_path)
         monkeypatch.setattr(
-            up.importlib.metadata, "distribution",
-            lambda name: _BrokenDirectUrlDistribution(
-                "/opt/tool", version="1.0.0"
-            ),
+            up.importlib.metadata,
+            "distribution",
+            lambda name: _BrokenDirectUrlDistribution("/opt/tool", version="1.0.0"),
         )
         monkeypatch.setattr(up, "_manager", lambda d, p: ("pip-venv", None))
         code = up.run_update(["--json"], application="sample-cli", package="sample-cli")

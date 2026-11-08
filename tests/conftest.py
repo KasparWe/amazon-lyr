@@ -14,6 +14,17 @@ def isolated_config(tmp_path, monkeypatch):
     return tmp_path
 
 
+@pytest.fixture
+def money_ops_enabled(monkeypatch):
+    """Flip the code-constant kill switches ON for tests of the upstream
+    checkout/return/cancel flows. Production code has no way to do this."""
+    from amazon_lyr import constants
+
+    monkeypatch.setattr(constants, "ORDERING_ENABLED", True)
+    monkeypatch.setattr(constants, "ORDER_CANCEL_ENABLED", True)
+    monkeypatch.setattr(constants, "RETURNS_ENABLED", True)
+
+
 @pytest.fixture(autouse=True)
 def _reset_client_singleton():
     """Keep the process-wide client singleton from leaking between tests."""

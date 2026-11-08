@@ -31,7 +31,7 @@ EXPECTED_TOOLS = {
 }
 
 
-def test_server_registers_all_tools():
+def test_server_registers_all_tools(money_ops_enabled):
     mcp = create_mcp_server()
     tools = {t.name for t in asyncio.run(mcp.list_tools())}
     missing = EXPECTED_TOOLS - tools

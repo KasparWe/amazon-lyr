@@ -14,6 +14,10 @@ from amazon_lyr.scraping.api_client import AmazonClient
 from amazon_lyr.server import create_mcp_server
 from amazon_lyr.session_state import save_cookies
 
+# Upstream money-flow tests: run with the kill switches flipped on.
+pytestmark = pytest.mark.usefixtures("money_ops_enabled")
+
+
 EXPECTED_TOOLS = {
     "search_products",
     "get_product",

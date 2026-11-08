@@ -5,11 +5,12 @@ from __future__ import annotations
 import asyncio
 import re
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 from curl_cffi.requests import AsyncSession
 
+from amazon_lyr import constants
 from amazon_lyr.constants import (
     ACCEPT_LANGUAGE,
     CART_ADD_PATH,
@@ -39,6 +40,7 @@ from amazon_lyr.exceptions import (
     AuthenticationError,
     CaptchaError,
     NotFoundError,
+    OrderingDisabledError,
     ParseError,
     SessionExpiredError,
 )
@@ -76,6 +78,34 @@ def _validate_asin(asin: str) -> str:
             "Copy it from search_products results."
         )
     return asin
+
+
+# Anything that looks like entering checkout or committing a purchase.
+# Matched against the request path (all methods) and POST form field names.
+_CHECKOUT_RE = re.compile(
+    r"checkout|/gp/buy/|place[-_.\s]?(?:your[-_.\s]?)?order|buy[-_.\s]?now|"
+    r"handle-buy-box|turbo|one[-_.\s]?click|1[-_.\s]?click",
+    re.IGNORECASE,
+)
+# Cart mutation field names come from parse_cart(); anything else is refused so
+# remove_from_cart/update_cart_quantity can't be abused as arbitrary-POST tools.
+_CART_DELETE_KEY_RE = re.compile(r"submit\.delete\.[A-Za-z0-9._:-]{1,128}")
+_CART_QTY_FIELD_RE = re.compile(r"quantityBox\.[A-Za-z0-9._:-]{1,128}")
+
+
+def _require_enabled(flag_name: str, action: str) -> None:
+    """Refuse a money-moving action unless its code constant is True."""
+    if not getattr(constants, flag_name):
+        raise OrderingDisabledError(
+            f"{action} is disabled in this build ({flag_name} = False in "
+            "amazon_lyr/constants.py). Do it in the browser instead."
+        )
+
+
+def _is_place_order_button(btn: dict) -> bool:
+    return bool(_CHECKOUT_RE.search(f"{btn.get('name', '')} {btn.get('value', '')}")) and bool(
+        re.search(r"place|buy|order", f"{btn.get('name', '')} {btn.get('value', '')}", re.I)
+    )
 
 
 class AmazonClient:
@@ -121,9 +151,38 @@ class AmazonClient:
         if resp.status_code == 404:
             raise NotFoundError("Page not found (404)")
 
+    def _guard_request(self, method: str, url: str, data: dict | None) -> None:
+        """Last line of defence, independent of which tool/method built the request.
+
+        1. Only https URLs on the configured Amazon marketplace's domain.
+        2. While ORDERING_ENABLED is False, refuse anything that looks like
+           checkout, order placement, buy-now or 1-click — by URL path for every
+           method, and by form field name for POSTs.
+        """
+        parts = urlsplit(url)
+        base_host = (urlsplit(self._base).hostname or "").lower()
+        base_domain = base_host[4:] if base_host.startswith("www.") else base_host
+        host = (parts.hostname or "").lower()
+        if parts.scheme != "https" or not (host == base_domain or host.endswith("." + base_domain)):
+            raise AmazonError(f"Refusing request to non-Amazon or non-https URL: {url!r}")
+        if not constants.ORDERING_ENABLED:
+            if _CHECKOUT_RE.search(parts.path):
+                raise OrderingDisabledError(
+                    f"Blocked {method} {parts.path}: checkout/ordering is disabled "
+                    "(ORDERING_ENABLED = False)."
+                )
+            if method.upper() != "GET" and data:
+                bad = [k for k in data if _CHECKOUT_RE.search(str(k))]
+                if bad:
+                    raise OrderingDisabledError(
+                        f"Blocked {method} with checkout/order fields {bad[:3]}: ordering is "
+                        "disabled (ORDERING_ENABLED = False)."
+                    )
+
     async def _request(self, method: str, path_or_url: str, **kwargs) -> Any:
-        session = await self._get_session()
         url = path_or_url if path_or_url.startswith("http") else urljoin(self._base, path_or_url)
+        self._guard_request(method, url, kwargs.get("data"))
+        session = await self._get_session()
         headers = {"User-Agent": DEFAULT_USER_AGENT, "Accept-Language": ACCEPT_LANGUAGE}
         kwargs.setdefault("headers", {}).update(headers)
 
@@ -241,6 +300,10 @@ class AmazonClient:
 
     async def remove_from_cart(self, item_key: str) -> dict:
         # item_key comes from view_cart() items[].key (e.g. submit.delete.<ID>)
+        if not _CART_DELETE_KEY_RE.fullmatch(item_key or ""):
+            raise AmazonError(
+                f"{item_key!r} is not a cart delete key (expected submit.delete.<id> from view_cart)."
+            )
         data = {item_key: "Delete"}
         html = await self.post_form(CART_VIEW_PATH, data=data)
         cart = parse_cart(html)
@@ -249,6 +312,11 @@ class AmazonClient:
 
     async def update_cart_quantity(self, qty_field: str, quantity: int) -> dict:
         """Change an item's quantity. qty_field comes from view_cart items[].qty_field."""
+        if not _CART_QTY_FIELD_RE.fullmatch(qty_field or ""):
+            raise AmazonError(
+                f"{qty_field!r} is not a cart quantity field (expected quantityBox.<id> "
+                "from view_cart)."
+            )
         quantity = max(1, min(int(quantity or 1), 30))
         data = {qty_field: str(quantity)}
         html = await self.post_form(CART_VIEW_PATH, data=data)
@@ -310,6 +378,7 @@ class AmazonClient:
 
     async def _initiate_checkout(self) -> str:
         """Proceed from cart into the checkout workflow; returns first step HTML."""
+        _require_enabled("ORDERING_ENABLED", "Checkout")
         cart = await self.view_cart()
         if cart.get("empty") or not cart.get("items"):
             raise AmazonError("Cart is empty — add items with add_to_cart first.")
@@ -322,6 +391,7 @@ class AmazonClient:
     async def checkout_preview(self) -> dict:
         """Walk the checkout workflow WITHOUT placing anything; stop at the final
         review step and summarize what an order would look like."""
+        _require_enabled("ORDERING_ENABLED", "Checkout preview")
         html = await self._initiate_checkout()
         for _ in range(8):
             step = parse_checkout_form(html)
@@ -333,6 +403,10 @@ class AmazonClient:
                 break
             if is_review:
                 break  # final review reached; do NOT submit further during preview
+            # Single-page checkout puts "Place your order" on the first page, and
+            # page-marker detection is heuristic — never click a buying button here.
+            if any(_is_place_order_button(b) for b in step["submit_buttons"]):
+                break
             # Continue with defaults (no selections overridden).
             data = {**step["fields"]}
             for choice in step["choices"]:
@@ -369,6 +443,7 @@ class AmazonClient:
         (exact literal) so this can never fire accidentally."""
         from amazon_lyr.constants import CHECKOUT_CONFIRM_LITERAL
 
+        _require_enabled("ORDERING_ENABLED", "Placing orders")
         if confirm != CHECKOUT_CONFIRM_LITERAL:
             raise AmazonError(
                 f"Refusing to place an order: pass confirm='{CHECKOUT_CONFIRM_LITERAL}' "
@@ -467,6 +542,7 @@ class AmazonClient:
         Best-effort by design: Amazon rotates wizard tokens aggressively. Every
         failure mode raises a ParseError with manual-fallback guidance.
         """
+        _require_enabled("RETURNS_ENABLED", "Starting returns")
         if not _ORDER_ID_RE.fullmatch(order_id.strip()):
             raise AmazonError(f"Invalid order id {order_id!r} (expected 123-1234567-1234567).")
         oid = order_id.strip()
@@ -534,6 +610,7 @@ class AmazonClient:
 
     async def cancel_order(self, order_id: str) -> dict:
         """Cancel an unshipped order via the two-step cancellation flow."""
+        _require_enabled("ORDER_CANCEL_ENABLED", "Cancelling orders")
         details = await self.get_order_details(order_id)
         cancel_url = details.get("cancel_url")
         if not cancel_url:

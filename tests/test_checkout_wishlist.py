@@ -12,6 +12,10 @@ from amazon_lyr.exceptions import AmazonError, ParseError
 from amazon_lyr.scraping.api_client import AmazonClient
 from amazon_lyr.scraping.parsers import parse_checkout_form, parse_order_confirmation
 
+# Upstream money-flow tests: run with the kill switches flipped on.
+pytestmark = pytest.mark.usefixtures("money_ops_enabled")
+
+
 CART_HTML = """
 <div class="sc-list-item-content">
   <input type="submit" name="submit.delete.K1" value="Delete">
