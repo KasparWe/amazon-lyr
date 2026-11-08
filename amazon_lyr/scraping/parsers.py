@@ -267,8 +267,61 @@ def parse_reviews(html: str, asin: str) -> dict:
 # ── cart ─────────────────────────────────────────────────────────────────
 
 
+_ITEM_QTY_FIELD_RE = re.compile(r"quantityBox\.[A-Za-z0-9._:-]+")
+
+
+def _parse_cart_rows(soup: BeautifulSoup, rows: list[Tag]) -> dict:
+    """Current layout: one div.sc-list-item per line with data-* attributes."""
+    active: list[dict] = []
+    saved: list[dict] = []
+    for row in rows:
+        delete = row.select_one('input[name^="submit.delete"]')
+        price_text = _text(row.select_one(".a-price .a-offscreen"))
+        entry = {
+            "key": str(delete.get("name")) if delete else None,
+            "asin": row.get("data-asin") or None,
+            "name": _text(row.select_one("span.a-truncate-full, .sc-product-title")),
+            "price": price_text,
+            "price_value": _parse_price(price_text),
+        }
+        if row.get("data-itemtype") == "saved":
+            saved.append(entry)
+            continue
+        qty_node = row.select_one('[name^="quantityBox"]')
+        qty_name = str(qty_node.get("name")) if qty_node else ""
+        qty_raw = str(row.get("data-quantity") or "")
+        entry.update(
+            {
+                # Only per-item fields can be POSTed; the bare "quantityBox" of the
+                # JS-driven layout can't say which line it belongs to.
+                "qty_field": qty_name if _ITEM_QTY_FIELD_RE.fullmatch(qty_name) else None,
+                "quantity": int(qty_raw) if qty_raw.isdigit() else None,
+                "selected": row.get("data-isselected") != "0",
+            }
+        )
+        active.append(entry)
+
+    subtotal = _text(soup.select_one("#sc-subtotal-amount-buybox .sc-price"))
+    result = {
+        "empty": not active,
+        "item_count": len(active),
+        "items": active,
+        "subtotal": subtotal,
+        "subtotal_value": _parse_price(subtotal),
+        "saved_for_later": saved,
+    }
+    if any(not i["selected"] for i in active):
+        result["subtotal_note"] = (
+            "Amazon's subtotal only counts ticked items; unticked items have selected=false."
+        )
+    return result
+
+
 def parse_cart(html: str) -> dict:
     soup = _soup(html)
+    rows = soup.select("div.sc-list-item[data-asin][data-itemid]")
+    if rows:
+        return _parse_cart_rows(soup, rows)
     items: list[dict] = []
     for block in soup.select(
         'div.sc-list-item-content, div[data-name="Active Items"] .sc-list-item'

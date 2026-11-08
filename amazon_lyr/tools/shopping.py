@@ -26,7 +26,8 @@ def register_cart_tools(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations={"readOnlyHint": True})
     async def view_cart() -> dict:
-        """View the current cart contents with per-item delete keys."""
+        """View the cart: items (with delete keys, quantity, selected) and
+        saved_for_later. Amazon's subtotal only counts selected (ticked) items."""
         try:
             client = get_amazon_client()
             return await client.view_cart()
@@ -35,7 +36,8 @@ def register_cart_tools(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})
     async def remove_from_cart(item_key: str) -> dict:
-        """Remove a cart item using the `key` returned by view_cart items[].key."""
+        """Remove a cart or saved-for-later item using its `key` from view_cart
+        (items[].key or saved_for_later[].key)."""
         try:
             _require_write_session()
             client = get_amazon_client()
@@ -46,7 +48,8 @@ def register_cart_tools(mcp: FastMCP) -> None:
     @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
     async def update_cart_quantity(qty_field: str, quantity: int) -> dict:
         """Change a cart item's quantity (clamped 1-30). qty_field comes from
-        view_cart items[].qty_field."""
+        view_cart items[].qty_field; if it is null, remove the item and add it again
+        with the wanted quantity instead."""
         try:
             _require_write_session()
             client = get_amazon_client()

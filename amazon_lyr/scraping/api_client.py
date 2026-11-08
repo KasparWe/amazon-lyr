@@ -88,7 +88,7 @@ _CHECKOUT_RE = re.compile(
 )
 # Cart mutation field names come from parse_cart(); anything else is refused so
 # remove_from_cart/update_cart_quantity can't be abused as arbitrary-POST tools.
-_CART_DELETE_KEY_RE = re.compile(r"submit\.delete\.[A-Za-z0-9._:-]{1,128}")
+_CART_DELETE_KEY_RE = re.compile(r"submit\.delete(?:-active|-saved)?\.[A-Za-z0-9._:-]{1,128}")
 _CART_QTY_FIELD_RE = re.compile(r"quantityBox\.[A-Za-z0-9._:-]{1,128}")
 _REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 _MAX_REDIRECTS = 10
@@ -324,23 +324,26 @@ class AmazonClient:
         return parse_cart(html)
 
     async def remove_from_cart(self, item_key: str) -> dict:
-        # item_key comes from view_cart() items[].key (e.g. submit.delete.<ID>)
+        # item_key comes from view_cart() items[].key / saved_for_later[].key
+        # (submit.delete-active.<id>, submit.delete-saved.<id>, or older submit.delete.<id>)
         if not _CART_DELETE_KEY_RE.fullmatch(item_key or ""):
             raise AmazonError(
-                f"{item_key!r} is not a cart delete key (expected submit.delete.<id> from view_cart)."
+                f"{item_key!r} is not a cart delete key (use a `key` from view_cart)."
             )
         data = {item_key: "Delete"}
         html = await self.post_form(CART_VIEW_PATH, data=data)
         cart = parse_cart(html)
-        removed = all(i.get("key") != item_key for i in cart.get("items", []))
+        remaining = cart.get("items", []) + cart.get("saved_for_later", [])
+        removed = all(i.get("key") != item_key for i in remaining)
         return {"status": "ok" if removed else "uncertain", "cart": cart}
 
     async def update_cart_quantity(self, qty_field: str, quantity: int) -> dict:
         """Change an item's quantity. qty_field comes from view_cart items[].qty_field."""
         if not _CART_QTY_FIELD_RE.fullmatch(qty_field or ""):
             raise AmazonError(
-                f"{qty_field!r} is not a cart quantity field (expected quantityBox.<id> "
-                "from view_cart)."
+                f"{qty_field!r} is not a cart quantity field. Use items[].qty_field from "
+                "view_cart; when it is null, this cart layout only changes quantities in "
+                "the browser — remove the item and add_to_cart with the new quantity instead."
             )
         quantity = max(1, min(int(quantity or 1), 30))
         data = {qty_field: str(quantity)}
