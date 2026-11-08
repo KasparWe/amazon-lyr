@@ -170,18 +170,21 @@ async def test_view_cart_happy_path_through_protocol(isolated_config, monkeypatc
 
 async def test_add_to_cart_clamped_through_protocol(isolated_config, monkeypatch):
     save_cookies({"at-main": "t", "ubid-main": "u"})
-    empty_cart = '<div id="sc-empty-cart"></div>'
+    from conftest import buy_box_page, cart_page_with
 
     captured = {}
 
     class FakeSession:
         async def request(self, method, url, **kwargs):
-            captured.update(kwargs)
-            return type("R", (), {"text": empty_cart, "status_code": 200, "headers": {}})()
+            if method == "POST":
+                captured.update(kwargs)
+            text = buy_box_page("B0CLAMP001") if "/dp/" in url else cart_page_with("B0CLAMP001")
+            return type("R", (), {"text": text, "status_code": 200, "headers": {}})()
 
         async def close(self):
             pass
 
+    monkeypatch.setattr("amazon_lyr.scraping.api_client.REQUEST_INTERVAL", 0)
     client_obj = AmazonClient(cookies={"at-main": "t"})
     monkeypatch.setattr(client_obj, "_get_session", _fake_get(FakeSession()))
     dependencies._client = client_obj
@@ -192,7 +195,7 @@ async def test_add_to_cart_clamped_through_protocol(isolated_config, monkeypatch
                 "add_to_cart", {"asin": "B0CLAMP001", "quantity": 999}
             )
             assert result.data["requested"]["quantity"] == 30
-            assert captured["data"]["quantity.1"] == "30"
+            assert captured["data"]["items[0.base][quantity]"] == "30"
     finally:
         dependencies._client = None
 

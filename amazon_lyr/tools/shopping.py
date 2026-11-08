@@ -16,7 +16,8 @@ def _require_write_session() -> None:
 def register_cart_tools(mcp: FastMCP) -> None:
     @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
     async def add_to_cart(asin: str, quantity: int = 1) -> dict:
-        """Add a product to the Amazon shopping cart. quantity is clamped to 1-30."""
+        """Add a product to the Amazon shopping cart (quantity clamped to 1-30).
+        status is "ok" only when the item shows up in the cart afterwards."""
         try:
             _require_write_session()
             client = get_amazon_client()
@@ -71,8 +72,9 @@ def register_wishlist_tools(mcp: FastMCP) -> None:
 
     @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True})
     async def add_to_wishlist(asin: str) -> dict:
-        """Add a product to your default wishlist (idempotent — re-adding an
-        existing item is harmless). Needs full session cookies."""
+        """Add a product to your default wishlist. Amazon has changed this flow and
+        it can fail; if it does, tell the user to use Add to List on the product
+        page. Needs full session cookies."""
         try:
             _require_write_session()
             client = get_amazon_client()

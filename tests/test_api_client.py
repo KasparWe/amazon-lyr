@@ -2,7 +2,7 @@
 
 import pytest
 
-from amazon_lyr.exceptions import CaptchaError, SessionExpiredError
+from amazon_lyr.exceptions import AmazonError, CaptchaError, SessionExpiredError
 from amazon_lyr.scraping.api_client import AmazonClient
 
 
@@ -34,6 +34,7 @@ class FakeSession:
 
 
 def _client_with(monkeypatch, responses, cookies=None):
+    monkeypatch.setattr("amazon_lyr.scraping.api_client.REQUEST_INTERVAL", 0)
     client = AmazonClient(cookies=cookies or {"at-main": "t"})
     fake = FakeSession(responses)
     monkeypatch.setattr(client, "_get_session", _async_returning(fake))
@@ -83,16 +84,50 @@ async def test_search_passes_query_params(monkeypatch):
     assert params["page"] == "2"
 
 
-async def test_add_to_cart_posts_form(monkeypatch):
-    ok = FakeResponse('<div id="sc-empty-cart"></div>')
-    client, fake = _client_with(monkeypatch, ok)
+async def test_add_to_cart_uses_buy_box_tokens_and_verifies(monkeypatch):
+    from conftest import buy_box_page, cart_page_with
+
+    responses = [
+        FakeResponse(buy_box_page()),
+        FakeResponse("<html>ok</html>"),
+        FakeResponse(cart_page_with("B0TESTASIN")),
+    ]
+    client, fake = _client_with(monkeypatch, responses)
     result = await client.add_to_cart("B0TESTASIN", quantity=2)
-    call = fake.calls[0]
-    assert call["method"] == "POST"
-    assert "gp/aws/cart/add.html" in call["url"]
-    assert call["data"]["ASIN.1"] == "B0TESTASIN"
-    assert call["data"]["quantity.1"] == "2"
-    assert result["requested"]["asin"] == "B0TESTASIN"
+    get_dp, post, get_cart = fake.calls
+    assert get_dp["url"].endswith("/dp/B0TESTASIN")
+    assert post["method"] == "POST" and post["url"].endswith("/cart/add-to-cart")
+    assert post["data"] == {
+        "anti-csrftoken-a2z": "csrf-tok",
+        "clientName": "OffersX_OfferDisplay_DetailPage",
+        "items[0.base][asin]": "B0TESTASIN",
+        "items[0.base][offerListingId]": "offer-123",
+        "items[0.base][quantity]": "2",
+        "submit.addToCart": "Add to cart",
+    }
+    assert not any("buy" in k.lower() for k in post["data"])
+    assert result["status"] == "ok" and result["requested"]["asin"] == "B0TESTASIN"
+
+
+async def test_add_to_cart_not_confirmed_when_item_missing(monkeypatch):
+    from conftest import buy_box_page, cart_page_with
+
+    responses = [
+        FakeResponse(buy_box_page()),
+        FakeResponse("<html>ok</html>"),
+        FakeResponse(cart_page_with("B0OTHER000")),
+    ]
+    client, _ = _client_with(monkeypatch, responses)
+    assert (await client.add_to_cart("B0TESTASIN"))["status"] == "not_confirmed"
+
+
+async def test_add_to_cart_without_offer_raises(monkeypatch):
+    from amazon_lyr.exceptions import ParseError
+
+    client, fake = _client_with(monkeypatch, FakeResponse("<html>no buy box</html>"))
+    with pytest.raises(ParseError, match="no 'Add to cart' offer"):
+        await client.add_to_cart("B0TESTASIN")
+    assert len(fake.calls) == 1
 
 
 async def test_cookies_set_on_session():
@@ -198,23 +233,38 @@ async def test_post_form_sets_content_type(monkeypatch):
 
 
 async def test_remove_from_cart_reports_uncertain_when_item_stays(monkeypatch):
-    cart_still_there = """
-    <div class="sc-list-item-content">
-      <input type="submit" name="submit.delete.K1" value="Delete">
-      <span class="sc-product-link">Still here</span>
-    </div>"""
-    client, fake = _client_with(monkeypatch, FakeResponse(cart_still_there))
-    result = await client.remove_from_cart("submit.delete.K1")
+    from conftest import cart_page_with
+
+    page = cart_page_with("B0TESTASIN")
+    client, fake = _client_with(monkeypatch, [FakeResponse(page), FakeResponse(page)])
+    result = await client.remove_from_cart("submit.delete-active.K1")
     assert result["status"] == "uncertain"
-    assert fake.calls[0]["data"] == {"submit.delete.K1": "Delete"}
+    post = fake.calls[1]
+    assert post["url"].startswith("https://www.amazon.com/cart/ref=ord_cart_shr")
+    assert post["data"] == {"anti-csrftoken-a2z": "cart-tok", "submit.delete-active.K1": "Delete"}
+
+
+async def test_remove_from_cart_unknown_key(monkeypatch):
+    from conftest import cart_page_with
+
+    client, fake = _client_with(monkeypatch, FakeResponse(cart_page_with("B0TESTASIN")))
+    with pytest.raises(AmazonError, match="isn't in the cart"):
+        await client.remove_from_cart("submit.delete-active.NOPE")
+    assert len(fake.calls) == 1
 
 
 async def test_quantity_clamping_in_client(monkeypatch):
-    ok = FakeResponse('<div id="sc-empty-cart"></div>')
+    from conftest import buy_box_page, cart_page_with
+
     for raw, expected in ((100, "30"), (0, "1"), (-5, "1"), (7, "7")):
-        client, fake = _client_with(monkeypatch, ok)
+        responses = [
+            FakeResponse(buy_box_page("B0Q1234567")),
+            FakeResponse("ok"),
+            FakeResponse(cart_page_with("B0Q1234567")),
+        ]
+        client, fake = _client_with(monkeypatch, responses)
         await client.add_to_cart("B0Q1234567", quantity=raw)
-        assert fake.calls[0]["data"]["quantity.1"] == expected
+        assert fake.calls[1]["data"]["items[0.base][quantity]"] == expected
 
 
 async def test_search_filter_params_independent(monkeypatch):

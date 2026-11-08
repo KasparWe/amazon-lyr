@@ -133,3 +133,33 @@ CANCEL_PAGE_HTML = """
   <input type="checkbox" name="checkedItems" value="line1">
 </form>
 """
+
+
+def buy_box_page(asin: str = "B0TESTASIN") -> str:
+    """Product page with a one-time buy box (and a Subscribe & Save one)."""
+    return f"""
+<form id="addToCart" method="post" action="/gp/product/handle-buy-box/ref=dp_start-bbf_1_glance">
+  <input type="hidden" name="anti-csrftoken-a2z" value="csrf-tok">
+  <input type="hidden" name="items[0.base][asin]" value="{asin}">
+  <input type="hidden" name="clientName" value="OffersX_OfferDisplay_DetailPage">
+  <input type="hidden" name="items[0.base][offerListingId]" value="offer-123">
+  <input type="hidden" name="isBuyNow" value="0">
+  <input type="submit" name="submit.add-to-cart" value="Add to cart">
+  <input type="submit" name="submit.buy-now" value="">
+</form>
+<form id="addToCart" method="post" action="/gp/product/handle-buy-box/ref=dp_start-bbf_1_glance">
+  <input type="hidden" name="items[0.base][additionalParameters][recurringDelivery][type]" value="SNS">
+  <input type="hidden" name="anti-csrftoken-a2z" value="sns-tok">
+  <input type="hidden" name="items[0.base][offerListingId]" value="sns-offer">
+  <input type="submit" name="submit.add-to-cart" value="Subscribe">
+</form>"""
+
+
+def cart_page_with(asin: str) -> str:
+    return f"""<form method="post" action="/cart/ref=ord_cart_shr?app-nav-type=none">
+<input type="hidden" name="anti-csrftoken-a2z" value="cart-tok">
+<div class="a-row sc-list-item" data-asin="{asin}" data-itemid="K1" data-itemtype="active"
+     data-quantity="2" data-isselected="1">
+  <span class="a-truncate-full">Thing</span>
+  <input type="submit" name="submit.delete-active.K1" value="Delete">
+</div></form>"""

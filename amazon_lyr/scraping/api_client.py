@@ -47,8 +47,10 @@ from amazon_lyr.ratelimit import RateLimiter
 from amazon_lyr.scraping.parsers import (
     _ORDER_ID_RE,
     build_review_insights,
+    parse_add_to_cart_form,
     parse_cancel_form,
     parse_cart,
+    parse_cart_form_for,
     parse_checkout_form,
     parse_order_confirmation,
     parse_order_details,
@@ -137,8 +139,8 @@ class AmazonClient:
         final_url = str(getattr(resp, "url", ""))
         # Amazon's 404 page also mentions api-services-support / automated access,
         # so check the status first or a wrong path reads as a bot wall.
-        if resp.status_code == 404:
-            raise NotFoundError("Page not found (404)")
+        if resp.status_code == 404 or (resp.status_code in (403, 405) and "Page Not Found" in body):
+            raise NotFoundError(f"Page not found ({resp.status_code})")
         if any(
             marker in body
             for marker in (
@@ -312,14 +314,31 @@ class AmazonClient:
         asin = _validate_asin(asin)
         # Single source of truth for clamping — tools and CLI both route here.
         quantity = max(1, min(int(quantity or 1), 30))
+        product_url = f"{self._base}{PRODUCT_PATH}/{asin}"
+        form = parse_add_to_cart_form(await self.get_html(f"{PRODUCT_PATH}/{asin}"))
+        if form is None:
+            raise ParseError(
+                f"{asin} has no 'Add to cart' offer on {self._market.domain} (unavailable, "
+                f"or a size/colour must be chosen). Check {product_url}"
+            )
+        # Only the add-to-cart identifiers go to the dedicated add endpoint — never
+        # the buy box's own handler, which also serves "Buy now".
         data = {
-            "ASIN.1": asin,
-            "quantity.1": str(quantity),
-            "submit.addToCart": "Add to Cart",
+            "anti-csrftoken-a2z": form["csrf"],
+            "clientName": form["client_name"] or "OffersX_OfferDisplay_DetailPage",
+            "items[0.base][asin]": asin,
+            "items[0.base][offerListingId]": form["offer_listing_id"],
+            "items[0.base][quantity]": str(quantity),
+            "submit.addToCart": "Add to cart",
         }
-        html = await self.post_form(CART_ADD_PATH, data=data)
-        cart = parse_cart(html)
-        return {"status": "ok", "requested": {"asin": asin, "quantity": quantity}, "cart": cart}
+        await self.post_form(CART_ADD_PATH, data=data, referer=product_url)
+        cart = await self.view_cart()
+        added = any(i.get("asin") == asin for i in cart.get("items", []))
+        return {
+            "status": "ok" if added else "not_confirmed",
+            "requested": {"asin": asin, "quantity": quantity},
+            "cart": cart,
+        }
 
     async def view_cart(self) -> dict:
         html = await self.get_html(CART_VIEW_PATH)
@@ -332,8 +351,17 @@ class AmazonClient:
             raise AmazonError(
                 f"{item_key!r} is not a cart delete key (use a `key` from view_cart)."
             )
+        target = parse_cart_form_for(await self.get_html(CART_VIEW_PATH), item_key)
+        if target is None:
+            raise AmazonError(
+                f"{item_key!r} isn't in the cart any more. Call view_cart for current keys."
+            )
         data = {item_key: "Delete"}
-        html = await self.post_form(CART_VIEW_PATH, data=data)
+        if target["csrf"]:
+            data = {"anti-csrftoken-a2z": target["csrf"], **data}
+        html = await self.post_form(
+            target["action"], data=data, referer=self._base + CART_VIEW_PATH
+        )
         cart = parse_cart(html)
         remaining = cart.get("items", []) + cart.get("saved_for_later", [])
         removed = all(i.get("key") != item_key for i in remaining)
@@ -372,9 +400,16 @@ class AmazonClient:
         token = self._extract_csrf_token(ls_html)
 
         data = {"asin": asin, "csrfToken": token, "ref_": "lyr_add"}
-        resp_html = await self.post_form(
-            WISHLIST_ADD_PATH, data=data, referer=self._base + WISHLIST_PATH
-        )
+        try:
+            resp_html = await self.post_form(
+                WISHLIST_ADD_PATH, data=data, referer=self._base + WISHLIST_PATH
+            )
+        except NotFoundError:
+            raise ParseError(
+                f"{self._market.domain} no longer accepts the list-add request this tool "
+                f"uses. Add it in the browser: {self._base}{PRODUCT_PATH}/{asin} → "
+                "Add to List. get_wishlist still works."
+            ) from None
         low = resp_html.lower()
         if any(m in low for m in ("added to your list", "item added", "added to wishlist")):
             return {"status": "ok", "asin": asin}

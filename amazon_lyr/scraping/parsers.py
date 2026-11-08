@@ -317,6 +317,45 @@ def _parse_cart_rows(soup: BeautifulSoup, rows: list[Tag]) -> dict:
     return result
 
 
+def parse_add_to_cart_form(html: str) -> dict | None:
+    """Fields for /cart/add-to-cart from a product page's one-time-purchase buy box.
+
+    Only the add-to-cart identifiers are returned — never the buy-now fields.
+    None when the page has no add-to-cart offer (unavailable, variant not chosen).
+    """
+    soup = _soup(html)
+    forms = soup.select("form#addToCart")
+    form = next((f for f in forms if not f.select_one('[name*="recurringDelivery"]')), None)
+    if form is None or not form.select_one('[name="submit.add-to-cart"]'):
+        return None
+
+    def value(name: str) -> str | None:
+        node = form.select_one(f'input[name="{name}"]')
+        return str(node.get("value")) if node and node.get("value") else None
+
+    offer = value("items[0.base][offerListingId]") or value("offerListingID")
+    token = value("anti-csrftoken-a2z")
+    if not offer or not token:
+        return None
+    return {"csrf": token, "offer_listing_id": offer, "client_name": value("clientName")}
+
+
+def parse_cart_form_for(html: str, field: str) -> dict | None:
+    """Action + CSRF token of the cart form that contains ``field`` (e.g. a delete key)."""
+    soup = _soup(html)
+    node = soup.find("input", attrs={"name": field})
+    if node is None:
+        return None
+    form = node.find_parent("form")
+    if form is None:  # older layouts posted straight to the cart page
+        return {"action": "/gp/cart/view.html", "csrf": None}
+    token = form.find("input", attrs={"name": "anti-csrftoken-a2z"})
+    return {
+        "action": str(form.get("action") or "/gp/cart/view.html"),
+        "csrf": str(token.get("value")) if token and token.get("value") else None,
+    }
+
+
 def parse_cart(html: str) -> dict:
     soup = _soup(html)
     rows = soup.select("div.sc-list-item[data-asin][data-itemid]")

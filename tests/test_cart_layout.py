@@ -72,11 +72,18 @@ def _client(monkeypatch, responses):
 
 @pytest.mark.parametrize("kind,item_id", [("active", ID1), ("saved", ID3)])
 async def test_remove_accepts_2026_delete_keys(monkeypatch, kind, item_id):
-    after = CART_2026.replace(f"submit.delete-{kind}.{item_id}", "gone")
-    client, fake = _client(monkeypatch, [FakeResponse(after, url="https://www.amazon.ca/gp/cart")])
-    result = await client.remove_from_cart(f"submit.delete-{kind}.{item_id}")
+    key = f"submit.delete-{kind}.{item_id}"
+    page = (
+        '<form method="post" action="/cart/ref=ord_cart_shr">'
+        '<input type="hidden" name="anti-csrftoken-a2z" value="tok">' + CART_2026 + "</form>"
+    )
+    after = page.replace(key, "gone")
+    ca = "https://www.amazon.ca/gp/cart"
+    client, fake = _client(monkeypatch, [FakeResponse(page, url=ca), FakeResponse(after, url=ca)])
+    result = await client.remove_from_cart(key)
     assert result["status"] == "ok"
-    assert fake.calls[0]["data"] == {f"submit.delete-{kind}.{item_id}": "Delete"}
+    assert fake.calls[1]["url"] == "https://www.amazon.ca/cart/ref=ord_cart_shr"
+    assert fake.calls[1]["data"] == {"anti-csrftoken-a2z": "tok", key: "Delete"}
 
 
 async def test_update_qty_explains_js_layout(monkeypatch):
