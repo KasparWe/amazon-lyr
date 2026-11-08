@@ -47,11 +47,10 @@ async def test_agent_cannot_call_place_order_over_protocol(isolated_config):
             await client.call_tool("place_order", {"confirm": "PLACE_ORDER"})
 
 
-async def test_instructions_tell_agent_buying_is_disabled():
-    async with Client(create_mcp_server()) as client:
-        init = client.initialize_result
-        assert "disabled" in (init.instructions or "")
-        assert "confirm='PLACE_ORDER'" not in (init.instructions or "")
+def test_instructions_tell_agent_buying_is_disabled():
+    instructions = create_mcp_server().instructions or ""
+    assert "disabled" in instructions
+    assert "confirm='PLACE_ORDER'" not in instructions
 
 
 def _client(monkeypatch, responses=None):

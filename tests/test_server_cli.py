@@ -56,3 +56,24 @@ def test_cli_status_json(monkeypatch, capsys):
     data = json.loads(capsys.readouterr().out)
     assert data["authenticated"] is True
     assert data["mode"] == "full"
+
+
+def test_serve_runs_outside_asyncio(monkeypatch):
+    """FastMCP's run() starts its own loop; calling it inside asyncio.run() crashes."""
+    import asyncio
+
+    from amazon_lyr import cli_main
+
+    seen = {}
+
+    class FakeMCP:
+        def run(self, **kwargs):
+            try:
+                asyncio.get_running_loop()
+                seen["loop"] = True
+            except RuntimeError:
+                seen["loop"] = False
+
+    monkeypatch.setattr("amazon_lyr.server.create_mcp_server", lambda: FakeMCP())
+    cli_main.main(["serve"])
+    assert seen == {"loop": False}

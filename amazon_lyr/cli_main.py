@@ -101,6 +101,10 @@ def main(argv: list[str] | None = None) -> None:
 
         update_args = (["--check"] if args.check else []) + (["--json"] if args.json else [])
         raise SystemExit(run_update(update_args, application="amazon-lyr", package="amazon-lyr"))
+    if args.command == "serve" and not args.version:
+        # FastMCP starts its own event loop; it can't run inside asyncio.run().
+        _serve(args)
+        return
     from amazon_lyr.cli_actions import run_command  # noqa: PLC0415
 
     asyncio.run(run_command(args))

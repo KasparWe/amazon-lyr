@@ -122,12 +122,6 @@ async def run_command(args) -> None:  # noqa: ANN001, C901 - flat dispatch is fi
         _home_view()
         return
 
-    if cmd == "serve":
-        from amazon_lyr.cli_main import _serve  # noqa: PLC0415
-
-        _serve(args)
-        return
-
     if cmd == "status":
         print(json.dumps(get_auth_status()) if args.json else toon_object(get_auth_status()))
         return
