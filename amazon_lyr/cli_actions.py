@@ -103,8 +103,7 @@ def _home_view() -> None:
     print()
     print("next steps:")
     if mode == "none":
-        print("  amazon-lyr login --browser chrome   # import cookies from your browser")
-        print("  amazon-lyr login --cookies-file c.json")
+        print("  amazon-lyr login --cookies-file c.json   # exported amazon.com cookies")
     else:
         print('  amazon-lyr search "mechanical keyboard"')
         print('  MCP config: {"command": "amazon-lyr", "args": ["serve"]}')

@@ -2,17 +2,18 @@
 set -euo pipefail
 
 # ─── amazon-lyr installer ────────────────────────────────────────────────
-# curl -sSL https://raw.githubusercontent.com/ishan-parihar/amazon-lyr/main/install.sh | bash
+# git clone https://github.com/KasparWe/amazon-lyr && bash amazon-lyr/install.sh
+# (hardened fork: installs from KasparWe/amazon-lyr, never from upstream)
 #
 # Production install path (family convention: reddit-lyr / threads-lyr):
 #   1. uv tool install  — isolated CLI on PATH, upgrades via `uv tool upgrade`
 #   2. pipx             — fallback when only pipx exists
 #   3. pip --user       — last resort
 # Zero-install alternative (no persistence):
-#   uvx --from git+https://github.com/ishan-parihar/amazon-lyr amazon-lyr --version
+#   uvx --from git+https://github.com/KasparWe/amazon-lyr amazon-lyr --version
 # ──────────────────────────────────────────────────────────────────────────
 
-REPO="https://github.com/ishan-parihar/amazon-lyr.git"
+REPO="https://github.com/KasparWe/amazon-lyr.git"
 PKG_SPEC="git+${REPO}"
 BIN="amazon-lyr"
 MIN_PYTHON_VERSION="3.11"
@@ -75,7 +76,7 @@ verify_install() {
 
   Get started:
     ${BIN}                          # home view + next steps
-    ${BIN} login --browser chrome   # import cookies (one-time)
+    ${BIN} login --cookies-file cookies.json   # exported amazon.com cookies
     ${BIN} serve                    # start the MCP server
 
   MCP config:

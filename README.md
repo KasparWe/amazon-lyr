@@ -1,30 +1,29 @@
 <p align="center">
-  <img src="https://github.com/ishan-parihar/amazon-lyr/actions/workflows/ci.yml/badge.svg" alt="CI">
+  <img src="https://github.com/KasparWe/amazon-lyr/actions/workflows/ci.yml/badge.svg" alt="CI">
   <img src="https://img.shields.io/badge/python-3.11%2B-2b6cb0?style=flat&logo=python&logoColor=white" alt="Python 3.11+">
-  <img src="https://img.shields.io/badge/tools-21-c026d3?style=flat&logo=modelcontextprotocol&logoColor=white" alt="21 MCP tools">
+  <img src="https://img.shields.io/badge/tools-17-c026d3?style=flat&logo=modelcontextprotocol&logoColor=white" alt="17 MCP tools">
   <img src="https://img.shields.io/badge/license-MIT-059669?style=flat" alt="MIT">
 </p>
 
 > [!IMPORTANT]
-> **Private hardened fork.** Buying, order cancellation and returns are switched
-> off by code constants in `amazon_lyr/constants.py` (`ORDERING_ENABLED`,
-> `ORDER_CANCEL_ENABLED`, `RETURNS_ENABLED` — all `False`). The tools are not
-> registered and the HTTP layer refuses any checkout request. Search, product,
-> reviews, cart and wishlist work as normal. See [SECURITY_REVIEW.md](SECURITY_REVIEW.md).
+> **Hardened fork of [ishan-parihar/amazon-lyr](https://github.com/ishan-parihar/amazon-lyr).**
+> Buying, order cancellation and returns are switched off by code constants in
+> `amazon_lyr/constants.py` (`ORDERING_ENABLED`, `ORDER_CANCEL_ENABLED`,
+> `RETURNS_ENABLED` — all `False`). Those tools are not registered, the client
+> methods refuse, and the HTTP layer refuses any checkout request or redirect.
+> Search, product, reviews, cart, wishlist and order tracking work as normal.
+> See [SECURITY_REVIEW.md](SECURITY_REVIEW.md).
 >
 > Install from this repo, not upstream (otherwise `amazon-lyr update` would pull
-> the unhardened code), and log in with `--cookies-file` (`--browser` is broken upstream).
+> the unhardened code), and log in with `--cookies-file` (`--browser` is broken).
+> amazon.com only — other marketplaces won't authenticate.
 
 <h1 align="center">amazon-lyr</h1>
 
 <p align="center">
-  <strong>The full Amazon lifecycle as MCP tools for AI agents</strong> — research
-  products and reviews, manage the cart, place orders, track shipments, start
-  returns — all through your own logged-in browser session. No PA-API keys.
-</p>
-
-<p align="center">
-  <img src="./assets/readme/hero.svg" width="100%" alt="amazon-lyr: an agent session panel showing search_products, review_insights and checkout_preview flowing into a highlighted place_order step and a green order-confirmation chip">
+  <strong>Amazon research and shopping as MCP tools for AI agents</strong> — research
+  products and reviews, manage the cart and wishlist, track orders — all through
+  your own logged-in browser session. No PA-API keys. Checkout stays in your browser.
 </p>
 
 ---
@@ -37,24 +36,22 @@ This is one real conversation with an agent running `amazon-lyr` — no steps hi
 1. search_products("noise cancelling headphones", max_price=300, min_rating=4)
 2. review_insights("B0X1234567")            # star spread + keyword themes
 3. search_in_reviews("B0X1234567", query="broke")     # what actually breaks?
-4. add_to_cart("B0X1234567", quantity=1)
-5. checkout_preview()                        # totals + address + payment, nothing bought
-6. place_order(confirm="PLACE_ORDER")       # only after the user said "buy it"
-   ✓ order placed · #111-2223334-5556667
-7. track_shipment("111-2223334-5556667")
-8. initiate_return("111-2223334-5556667", reason="defective", asin_hint="…")
-9. list_returns()                           # refund status confirmed
+4. add_to_cart("B0X1234567", quantity=1)     # or add_to_wishlist(...)
+   → you check out yourself in the browser
+5. get_orders()
+6. track_shipment("111-2223334-5556667")
+7. list_returns()                            # refund status
 ```
 
-Every step is a typed MCP tool call. The buying step is deliberately hard to
-fire by accident — see [Safety model](#safety-model).
+Every step is a typed MCP tool call. There is no buying step: the agent can
+fill the cart, but checkout happens in your browser — see [Safety model](#safety-model).
 
 ## Why it's different
 
 | | |
 |---|---|
 | **No API keys** | Speaks Amazon's own web endpoints over `curl_cffi` with Chrome TLS impersonation — the same session your browser has |
-| **Full lifecycle** | Not just scraping: cart mutations, wishlist writes, checkout with confirmation parsing, returns wizard, cancellations |
+| **More than scraping** | Cart mutations, wishlist writes, order details and shipment tracking |
 | **Agent-native errors** | CAPTCHAs, sign-out redirects and soft throttles surface as typed errors with recovery hints (`possibly_throttled`, manual-fallback URLs) — never silent garbage |
 
 ## How it works
@@ -63,29 +60,30 @@ fire by accident — see [Safety model](#safety-model).
 browser cookies ──▶ AmazonClient (curl_cffi, captcha-aware)
                         │
                         ▼
-              bs4 parsers ──▶ normalized dicts ──▶ 21 FastMCP tools
+              bs4 parsers ──▶ normalized dicts ──▶ 17 FastMCP tools
                                                    (readOnly / destructive annotations)
 ```
 
-Auth is your own session: `amazon-lyr login` imports cookies from Chrome,
-Brave, Firefox, Edge or Zen via [obscura-core](https://github.com/ishan-parihar/obscura-core),
-or from an explicit JSON export. Reads need the login token; cart, orders,
-returns and checkout also need the session context cookies.
+Auth is your own session: `amazon-lyr login --cookies-file` imports a JSON
+export of your amazon.com cookies (any cookie-export extension works). Reads
+need the login token (`at-main`); cart, wishlist and orders also need the
+session cookies (`session-id`, `ubid-main`). Browser import via the optional
+`obscura` extra is broken and not recommended (see the security review).
 
 ## Install
 
 ```bash
-# Persistent install — uv tool (isolated; bootstraps uv on clean systems)
-curl -fsSL https://raw.githubusercontent.com/ishan-parihar/amazon-lyr/main/install.sh | bash
+# Persistent install — uv tool (isolated, upgrades from this repo)
+uv tool install git+https://github.com/KasparWe/amazon-lyr.git
 
-# Zero-install run without persistence:
-uvx --from git+https://github.com/ishan-parihar/amazon-lyr amazon-lyr --version
+# Or clone and run the installer (also handles pipx / pip fallbacks):
+git clone https://github.com/KasparWe/amazon-lyr && bash amazon-lyr/install.sh
 ```
 
 Then authenticate once and serve:
 
 ```bash
-amazon-lyr login --browser chrome            # or: --cookies-file cookies.json
+amazon-lyr login --cookies-file cookies.json # exported amazon.com cookies
 amazon-lyr search "mechanical keyboard"      # shell works immediately
 amazon-lyr serve                             # MCP server (stdio)
 ```
@@ -101,7 +99,7 @@ amazon-lyr serve                             # MCP server (stdio)
 }
 ```
 
-## Tools (21)
+## Tools (17)
 
 | Category | Tools |
 |----------|-------|
@@ -111,26 +109,37 @@ amazon-lyr serve                             # MCP server (stdio)
 | **Cart** | `add_to_cart`, `view_cart`, `update_cart_quantity`, `remove_from_cart` |
 | **Wishlist** | `add_to_wishlist`, `get_wishlist` |
 | **Orders** | `get_orders`, `get_order_details`, `track_shipment` |
-| **Returns** | `list_returns`, `initiate_return` (friendly reason codes) |
-| **Buying** | `checkout_preview`, `place_order` |
-| **Danger zone** | `cancel_order` |
+| **Returns** | `list_returns` (read-only) |
 | **Session** | `get_session_status` |
 
 ## Safety model
 
-Money moves through exactly two gates:
+Nothing an agent sends over MCP can move money. Product titles and reviews
+are untrusted text, so a prompt injection is assumed possible; the defences
+don't rely on the model behaving.
 
-1. **Session gate** — every mutation requires full login cookies
-   (`at-main` + `session-id`/`ubid-main`). Reads-only sessions are refused
-   before any request is made.
-2. **Consent gate** — `place_order` refuses to run unless passed the exact
-   literal `confirm="PLACE_ORDER"`. The intended flow is:
-   preview for the user → user approves → then pass the literal.
-   `cancel_order` and `initiate_return` are similarly annotated as
-   destructive/non-idempotent so agent frameworks treat them accordingly.
+1. **Kill switches** — `ORDERING_ENABLED`, `ORDER_CANCEL_ENABLED` and
+   `RETURNS_ENABLED` in `amazon_lyr/constants.py` are plain code constants,
+   not env vars or tool parameters. While `False`, `checkout_preview`,
+   `place_order`, `cancel_order` and `initiate_return` aren't registered and
+   their client methods refuse before any request.
+2. **Transport guard** — every request, and every redirect hop, must be https
+   on the Amazon domain, and anything that looks like checkout, `/gp/buy/`,
+   place-order, buy-now or 1-click is refused by URL path and form field name.
+3. **Narrow cart writes** — `remove_from_cart` / `update_cart_quantity` only
+   accept `submit.delete.<id>` / `quantityBox.<id>` fields from `view_cart`.
+4. **Session gate** — every mutation requires full login cookies; read-only
+   sessions are refused before any request.
+5. **Local-only HTTP** — `serve --transport streamable-http` refuses to bind
+   anything but a loopback address (the transport has no authentication).
 
-Card verification (OTP / 3-D Secure) is detected mid-checkout and reported
-as `needs_verification` with browser instructions — never guessed through.
+`tests/test_kill_switch.py` runs against the shipped constants and fails if a
+switch is flipped. Re-enabling buying needs more than flipping the flag — see
+"If you want to turn ordering on later" in [SECURITY_REVIEW.md](SECURITY_REVIEW.md).
+
+Your Amazon session cookies live in plain JSON at
+`~/.config/amazon-lyr/cookies.json` (mode 600). Run `amazon-lyr logout` when
+you're done, and don't give coding agents write access to the installed package.
 
 ## Limits
 
@@ -142,13 +151,14 @@ Honest ceilings, all surfaced as typed errors instead of wrong data:
   responses carry `possibly_throttled: true` when suspected
 - **Geo price variants** — some variants render prices client-side;
   search falls back to text-scanning, `get_product` stays authoritative
-- **No auto-buy without consent** — by design; checkout demands the explicit
-  confirm literal and user approval
+- **No buying, cancelling or returns** — by design in this fork; do those in
+  the browser
+- **amazon.com only** — cookie names and domain are hard-coded
 
 ## Development
 
 ```bash
-git clone https://github.com/ishan-parihar/amazon-lyr && cd amazon-lyr
+git clone https://github.com/KasparWe/amazon-lyr && cd amazon-lyr
 uv sync --extra dev
 uv run ruff check . && uv run pytest -q
 ```
@@ -158,8 +168,8 @@ Architecture notes, invariants, and the release process live in
 
 ## License
 
-MIT © [Ishan Parihar](https://github.com/ishan-parihar)
+MIT © [Ishan Parihar](https://github.com/ishan-parihar). Hardening changes in this fork are under the same license.
 
 ## Updating
 
-Use `amazon-lyr update --check` to check without changing the installation, or `amazon-lyr update` to update it. `amazon-lyr upgrade` is an alias. The command delegates to the manager that owns this installation (`uv`, `pipx`, or `pip`) and refuses editable, local-checkout, system, or unknown installs instead of replacing package-manager-owned files. For example: `uv tool upgrade amazon-lyr`.
+Use `amazon-lyr update --check` to check without changing the installation, or `amazon-lyr update` to update it. `amazon-lyr upgrade` is an alias. The command delegates to the manager that owns this installation (`uv`, `pipx`, or `pip`) and refuses editable, local-checkout, system, or unknown installs instead of replacing package-manager-owned files. For example: `uv tool upgrade amazon-lyr`. Updates come from wherever you installed from, so install from this repo to keep the hardening.

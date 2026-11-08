@@ -3,14 +3,14 @@
   "name": "amazon-mcp-server",
   "display_name": "Amazon MCP Server",
   "version": "0.1.0",
-  "description": "Amazon research & shopping MCP server using browser cookies \u2014 search, product details, reviews, cart, orders",
-  "long_description": "# Amazon MCP Server\n\nSearch Amazon, research products and reviews, manage the cart and track orders through your own logged-in browser session. No PA-API keys required.\n\n## Quick start\n\n1. Install: `install.sh` (or `uv sync`)\n2. Login: `amazon-lyr login --browser chrome`\n3. Start the MCP server: `amazon-lyr serve`\n",
+  "description": "Amazon research & shopping MCP server using browser cookies \u2014 search, product details, reviews, cart, orders (hardened fork: no buying, cancelling or returns)",
+  "long_description": "# Amazon MCP Server\n\nSearch Amazon, research products and reviews, manage the cart and track orders through your own logged-in browser session. No PA-API keys required.\n\n## Quick start\n\n1. Install: `install.sh` (or `uv sync`)\n2. Login: `amazon-lyr login --cookies-file cookies.json`\n3. Start the MCP server: `amazon-lyr serve`\n",
   "author": {
     "name": "Ishan Parihar",
     "url": "https://github.com/ishan-parihar"
   },
-  "homepage": "https://github.com/ishan-parihar/amazon-lyr",
-  "documentation": "https://github.com/ishan-parihar/amazon-lyr#readme",
+  "homepage": "https://github.com/KasparWe/amazon-lyr",
+  "documentation": "https://github.com/KasparWe/amazon-lyr#readme",
   "license": "MIT",
   "keywords": [
     "amazon",
@@ -81,28 +81,12 @@
       "description": "Returns and refunds list"
     },
     {
-      "name": "initiate_return",
-      "description": "Start a return/refund request"
-    },
-    {
-      "name": "cancel_order",
-      "description": "Cancel an unshipped order (destructive)"
-    },
-    {
       "name": "get_session_status",
       "description": "Check auth/session state"
     },
     {
       "name": "add_to_wishlist",
       "description": "Add an ASIN to your default wishlist"
-    },
-    {
-      "name": "checkout_preview",
-      "description": "Walk checkout WITHOUT buying; review summary"
-    },
-    {
-      "name": "place_order",
-      "description": "Place the order (requires confirm='PLACE_ORDER')"
     }
   ],
   "capabilities": {

@@ -154,3 +154,37 @@ async def test_preview_never_clicks_place_order_even_when_enabled(monkeypatch, m
     await client.checkout_preview()
     posted = [c.get("data") or {} for c in fake.calls if c["method"] == "POST"]
     assert not any("placeYourOrder1" in d for d in posted)
+
+
+def _redirect(location, status=302):
+    resp = FakeResponse("", status_code=status)
+    resp.headers = {"location": location}
+    return resp
+
+
+@pytest.mark.parametrize(
+    "location",
+    [
+        "/checkout/entry/cart?proceedToCheckout=1",
+        "https://www.amazon.com/gp/buy/spc/handlers/display.html",
+        "http://www.amazon.com/gp/cart/view.html",
+        "https://evil.example/x",
+    ],
+)
+async def test_redirects_are_guarded_hop_by_hop(monkeypatch, location):
+    client, fake = _client(monkeypatch, [_redirect(location), FakeResponse("<html></html>")])
+    with pytest.raises(AmazonError):
+        await client._request("POST", "/gp/cart/view.html", data={"submit.delete.C1": "Delete"})
+    assert len(fake.calls) == 1, "the unsafe redirect target must never be requested"
+
+
+async def test_safe_redirect_is_followed_as_get(monkeypatch):
+    client, fake = _client(
+        monkeypatch, [_redirect("/gp/cart/view.html?ref=x"), FakeResponse("<html>ok</html>")]
+    )
+    resp = await client._request("POST", "/gp/aws/cart/add.html", data={"ASIN.1": "B000000001"})
+    assert resp.text == "<html>ok</html>"
+    assert [c["method"] for c in fake.calls] == ["POST", "GET"]
+    assert fake.calls[1]["url"] == "https://www.amazon.com/gp/cart/view.html?ref=x"
+    assert "data" not in fake.calls[1]
+    assert all(c["allow_redirects"] is False for c in fake.calls)

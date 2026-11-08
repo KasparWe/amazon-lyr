@@ -37,7 +37,6 @@ from amazon_lyr.constants import (
 )
 from amazon_lyr.exceptions import (
     AmazonError,
-    AuthenticationError,
     CaptchaError,
     NotFoundError,
     OrderingDisabledError,
@@ -91,6 +90,8 @@ _CHECKOUT_RE = re.compile(
 # remove_from_cart/update_cart_quantity can't be abused as arbitrary-POST tools.
 _CART_DELETE_KEY_RE = re.compile(r"submit\.delete\.[A-Za-z0-9._:-]{1,128}")
 _CART_QTY_FIELD_RE = re.compile(r"quantityBox\.[A-Za-z0-9._:-]{1,128}")
+_REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
+_MAX_REDIRECTS = 10
 
 
 def _require_enabled(flag_name: str, action: str) -> None:
@@ -179,6 +180,29 @@ class AmazonClient:
                         "disabled (ORDERING_ENABLED = False)."
                     )
 
+    async def _send_following_redirects(
+        self, session: AsyncSession, method: str, url: str, kwargs: dict
+    ) -> Any:
+        """Follow redirects by hand so every hop passes _guard_request.
+
+        Automatic redirects would let an allowed URL bounce into checkout or onto
+        plain http (the session cookies aren't marked Secure).
+        """
+        for _ in range(_MAX_REDIRECTS + 1):
+            resp = await session.request(method, url, allow_redirects=False, **kwargs)
+            location = (getattr(resp, "headers", None) or {}).get("location")
+            if resp.status_code not in _REDIRECT_STATUSES or not location:
+                return resp
+            url = urljoin(url, location)
+            if resp.status_code in (301, 302, 303):
+                # Browser semantics: the follow-up is a GET without the body.
+                method = "GET"
+                kwargs = {k: v for k, v in kwargs.items() if k not in ("data", "json", "params")}
+            else:
+                kwargs = {k: v for k, v in kwargs.items() if k != "params"}
+            self._guard_request(method, url, kwargs.get("data"))
+        raise AmazonError(f"Too many redirects (>{_MAX_REDIRECTS}) starting from {url!r}")
+
     async def _request(self, method: str, path_or_url: str, **kwargs) -> Any:
         url = path_or_url if path_or_url.startswith("http") else urljoin(self._base, path_or_url)
         self._guard_request(method, url, kwargs.get("data"))
@@ -190,10 +214,11 @@ class AmazonClient:
         last_err: Exception | None = None
         for attempt in range(MAX_RETRIES):
             try:
-                resp = await session.request(method, url, allow_redirects=True, **kwargs)
+                resp = await self._send_following_redirects(session, method, url, kwargs)
                 self._check_page(resp)
                 return resp
-            except (AuthenticationError, SessionExpiredError, CaptchaError, NotFoundError):
+            except AmazonError:
+                # Typed failures (captcha, sign-in, 404, guard refusals) are final.
                 raise
             except Exception as e:  # noqa: BLE001 - retry then wrap
                 last_err = e

@@ -5,7 +5,8 @@
 - **Project**: amazon-lyr — Amazon research & shopping MCP server + CLI (search, product details, reviews, cart, orders)
 - **Language**: Python 3.11+
 - **Package Manager**: uv
-- **Repository**: https://github.com/ishan-parihar/amazon-lyr
+- **Repository**: https://github.com/KasparWe/amazon-lyr (hardened fork of
+  https://github.com/ishan-parihar/amazon-lyr — ordering/cancel/returns disabled)
 - **Family**: part of the `-lyr` series (reddit-lyr, twitter-lyr, threads-lyr…) — browser-cookie auth, no official API keys
 
 ## Build, Lint, and Test Commands
@@ -66,8 +67,16 @@ Key invariants:
   order-id regex) with format hints in the error.
 - Mutations (`cart-add`, cart qty/remove, returns, cancel) gate on
   `validate_write_session()` in BOTH the MCP tool layer and the CLI.
-- Money-moving tools (`initiate_return`, `cancel_order`) are MCP-only by
-  design — they need conversational confirmation, not shell flags.
+- Money-moving tools (`checkout_preview`, `place_order`, `initiate_return`,
+  `cancel_order`) are MCP-only by design, and in this fork are off behind the
+  code constants `ORDERING_ENABLED` / `ORDER_CANCEL_ENABLED` / `RETURNS_ENABLED`
+  (all `False`): not registered, client methods raise `OrderingDisabledError`.
+  Never turn these into env vars, config or tool parameters, and don't flip
+  them without the steps in SECURITY_REVIEW.md.
+- Every request and every redirect hop goes through `_guard_request`
+  (https + Amazon domain; checkout paths/fields refused while ordering is off).
+  Redirects are followed by hand — never pass `allow_redirects=True`.
+- `tests/test_kill_switch.py` runs against the shipped constants; keep it green.
 - Tests never hit live Amazon — fixture HTML strings or FakeSession.
 
 ## Release Process
