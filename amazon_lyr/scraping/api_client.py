@@ -17,7 +17,6 @@ from amazon_lyr.constants import (
     CART_VIEW_PATH,
     CHECKOUT_START_PATH,
     CHECKOUT_VERIFICATION_MARKERS,
-    DEFAULT_MARKETPLACE,
     DEFAULT_USER_AGENT,
     MAX_RETRIES,
     ORDER_DETAILS_PATH,
@@ -43,6 +42,7 @@ from amazon_lyr.exceptions import (
     ParseError,
     SessionExpiredError,
 )
+from amazon_lyr.marketplace import DEFAULT_HOST, get_marketplace
 from amazon_lyr.ratelimit import RateLimiter
 from amazon_lyr.scraping.parsers import (
     _ORDER_ID_RE,
@@ -112,7 +112,8 @@ def _is_place_order_button(btn: dict) -> bool:
 class AmazonClient:
     def __init__(self, cookies: dict[str, str] | None = None, marketplace: str | None = None):
         self._cookies = cookies or {}
-        self._base = (marketplace or DEFAULT_MARKETPLACE).rstrip("/")
+        self._market = get_marketplace(marketplace or DEFAULT_HOST)
+        self._base = self._market.base_url
         self._session: AsyncSession | None = None
         self._rate_limiter = RateLimiter(min_interval=REQUEST_INTERVAL)
 
@@ -122,7 +123,7 @@ class AmazonClient:
         if self._session is None:
             self._session = AsyncSession(impersonate="chrome", timeout=REQUEST_TIMEOUT)
             for name, value in self._cookies.items():
-                self._session.cookies.set(name, value, domain=".amazon.com")
+                self._session.cookies.set(name, value, domain="." + self._market.domain)
         return self._session
 
     async def close(self) -> None:
@@ -161,8 +162,7 @@ class AmazonClient:
            method, and by form field name for POSTs.
         """
         parts = urlsplit(url)
-        base_host = (urlsplit(self._base).hostname or "").lower()
-        base_domain = base_host[4:] if base_host.startswith("www.") else base_host
+        base_domain = self._market.domain
         host = (parts.hostname or "").lower()
         if parts.scheme != "https" or not (host == base_domain or host.endswith("." + base_domain)):
             raise AmazonError(f"Refusing request to non-Amazon or non-https URL: {url!r}")
@@ -487,7 +487,7 @@ class AmazonClient:
                 return {
                     "status": "needs_verification",
                     "note": "Amazon demanded card verification (OTP/3-D Secure). Finish "
-                    "in the browser at https://www.amazon.com/gp/cart/view.html then "
+                    f"in the browser at {self._base}/gp/cart/view.html then "
                     "check get_orders.",
                 }
             step = parse_checkout_form(html)
@@ -519,7 +519,7 @@ class AmazonClient:
             raise ParseError(
                 "Checkout workflow did not reach a confirmation within 10 steps. "
                 "Nothing appears to have been ordered — verify at "
-                "https://www.amazon.com/gp/your-orders/orders before retrying."
+                f"{self._base}/gp/your-orders/orders before retrying."
             )
         result = {"status": "placed", **placed}
         if not placed.get("order_id"):
@@ -537,7 +537,7 @@ class AmazonClient:
                 f"{order_id!r} is not a valid Amazon order id (format: 123-1234567-1234567)."
             )
         html = await self.get_html(ORDER_DETAILS_PATH, params={"orderID": order_id.strip()})
-        return parse_order_details(html, order_id=order_id.strip())
+        return parse_order_details(html, order_id=order_id.strip(), base=self._base)
 
     async def track_shipment(self, order_id: str) -> dict:
         details = await self.get_order_details(order_id)
@@ -629,7 +629,7 @@ class AmazonClient:
             if submitted
             else (
                 "Amazon required an extra confirmation step this session. Finish at "
-                "https://www.amazon.com/returns/orders — then verify with list_returns."
+                f"{self._base}/returns/orders — then verify with list_returns."
             ),
         }
 

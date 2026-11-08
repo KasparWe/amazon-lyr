@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from typing import Final
 
 # ── Money-movement kill switches ─────────────────────────────────────────
@@ -19,8 +18,6 @@ from typing import Final
 ORDERING_ENABLED: Final[bool] = False  # checkout_preview + place_order
 ORDER_CANCEL_ENABLED: Final[bool] = False  # cancel_order
 RETURNS_ENABLED: Final[bool] = False  # initiate_return
-
-DEFAULT_MARKETPLACE = os.getenv("AMAZON_MARKETPLACE", "https://www.amazon.com")
 
 SEARCH_PATH = "/s"
 PRODUCT_PATH = "/dp"
@@ -74,9 +71,7 @@ CAPTCHA_MARKERS = (
     "To discuss automated access to Amazon data please contact",
 )
 
-# at-main is the login token; the others make writes (cart/wishlist) reliable.
-REQUIRED_COOKIES = ["at-main"]
-WRITE_COOKIES = ["ubid-main", "session-id"]
+# Login/session cookie names depend on the storefront — see marketplace.py.
 
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "

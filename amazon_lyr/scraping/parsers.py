@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from decimal import Decimal, InvalidOperation
+from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup, Tag
 
@@ -19,7 +20,10 @@ _THUMB_RE = re.compile(r"\._.*?_\.")  # matches ._AC_UY218_. etc. (multi-segment
 _RATING_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(?:out of|/)\s*5\b")
 # Some geo/bot variants strip .a-price markup from the grid but leave the
 # amount as visible text. ponytail: heuristic scan; get_product is authoritative.
-_MONEY_RE = re.compile(r"(?:[$€£₹]|USD\s?|EUR\s?|GBP\s?|INR\s?)[0-9][0-9,\u00a0]*(?:\.[0-9]{2})?")
+_MONEY_RE = re.compile(
+    r"(?:CDN\$\s?|C\$\s?|[$€£₹¥]|USD\s?|CAD\s?|EUR\s?|GBP\s?|INR\s?)"
+    r"[0-9][0-9,\u00a0]*(?:\.[0-9]{2})?"
+)
 
 
 _CURRENCY_RE = re.compile(r"^([^\d\s.,][^\s\d.,]*)")
@@ -403,7 +407,9 @@ def _form_fields(form: Tag) -> dict[str, str]:
     return fields
 
 
-def parse_order_details(html: str, order_id: str | None = None) -> dict:
+def parse_order_details(
+    html: str, order_id: str | None = None, base: str = "https://www.amazon.com"
+) -> dict:
     soup = _soup(html)
     text_blob = soup.get_text(" ", strip=True)
     oid_match = _ORDER_ID_RE.search(text_blob)
@@ -448,14 +454,14 @@ def parse_order_details(html: str, order_id: str | None = None) -> dict:
     inv = soup.select_one("a[href*='invoice'], a[href*='/gp/aw/invoice']")
     if inv:
         href = str(inv.get("href", ""))
-        invoice_link = href if href.startswith("http") else f"https://www.amazon.com{href}"
+        invoice_link = urljoin(base + "/", href)
 
     cancel_url = None
     for a in soup.select("a[href*='cancel']"):
         label = (_text(a) or "").lower()
         if "cancel" in label and a.get("href"):
             href = str(a.get("href", ""))
-            cancel_url = href if href.startswith("http") else f"https://www.amazon.com{href}"
+            cancel_url = urljoin(base + "/", href)
             break
 
     return {
@@ -508,8 +514,8 @@ def parse_return_form(html: str) -> dict:
     if form is None:
         raise ParseError(
             "Could not find the return-selection form — Amazon's return flow may have "
-            "changed or this order may not be eligible. Check it manually at "
-            "https://www.amazon.com/returns/orders"
+            "changed or this order may not be eligible. Check it manually on your "
+            "Amazon site under /returns/orders"
         )
 
     items: list[dict] = []
@@ -636,7 +642,7 @@ def parse_checkout_form(html: str) -> dict:
     if form is None:
         raise ParseError(
             "Could not find a checkout form — the flow may have changed, or the cart "
-            "is empty. Check https://www.amazon.com/gp/cart/view.html"
+            "is empty. Check your cart on your Amazon site (/gp/cart/view.html)"
         )
 
     choices: list[dict] = []

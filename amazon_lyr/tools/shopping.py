@@ -8,7 +8,7 @@ from amazon_lyr.error_handler import handle_api_error
 def _require_write_session() -> None:
     if not validate_write_session():
         raise RuntimeError(
-            "Writes need full session cookies (at-main + session-id/ubid-main). "
+            "Writes need full session cookies (login token + session-id/ubid). "
             "Run `amazon-lyr login` to re-import cookies from your browser."
         )
 

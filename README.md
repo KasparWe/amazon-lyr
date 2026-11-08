@@ -16,7 +16,7 @@
 >
 > Install from this repo, not upstream (otherwise `amazon-lyr update` would pull
 > the unhardened code), and log in with `--cookies-file` (`--browser` is broken).
-> amazon.com only — other marketplaces won't authenticate.
+> Works with amazon.com, amazon.ca and other storefronts — picked from your cookies.
 
 <h1 align="center">amazon-lyr</h1>
 
@@ -65,9 +65,10 @@ browser cookies ──▶ AmazonClient (curl_cffi, captcha-aware)
 ```
 
 Auth is your own session: `amazon-lyr login --cookies-file` imports a JSON
-export of your amazon.com cookies (any cookie-export extension works). Reads
-need the login token (`at-main`); cart, wishlist and orders also need the
-session cookies (`session-id`, `ubid-main`). Browser import via the optional
+export of your Amazon cookies (any cookie-export extension works, e.g.
+Cookie-Editor's JSON export). Reads need the storefront's login token
+(`at-main` on amazon.com, `at-acbca` on amazon.ca); cart, wishlist and orders also need the
+session cookies (`session-id`, `ubid-main` / `ubid-acbca`). Browser import via the optional
 `obscura` extra is broken and not recommended (see the security review).
 
 ## Install
@@ -83,7 +84,7 @@ git clone https://github.com/KasparWe/amazon-lyr && bash amazon-lyr/install.sh
 Then authenticate once and serve:
 
 ```bash
-amazon-lyr login --cookies-file cookies.json # exported amazon.com cookies
+amazon-lyr login --cookies-file cookies.json # exported Amazon cookies
 amazon-lyr search "mechanical keyboard"      # shell works immediately
 amazon-lyr serve                             # MCP server (stdio)
 ```
@@ -153,7 +154,10 @@ Honest ceilings, all surfaced as typed errors instead of wrong data:
   search falls back to text-scanning, `get_product` stays authoritative
 - **No buying, cancelling or returns** — by design in this fork; do those in
   the browser
-- **amazon.com only** — cookie names and domain are hard-coded
+- **Supported storefronts** — amazon.com, .ca, .co.uk, .de, .fr, .it, .es, .in,
+  .co.jp, .com.au. The storefront is inferred from the login cookie
+  (`at-acbca` → amazon.ca); set `AMAZON_MARKETPLACE=amazon.ca` to force one.
+  Requests and cookies are scoped to that storefront's domain only
 
 ## Development
 

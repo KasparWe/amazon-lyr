@@ -15,7 +15,7 @@ session.
 ## Quick Start
 
 ```bash
-# Import an exported amazon.com cookie JSON (one-time)
+# Import an exported Amazon cookie JSON (one-time; storefront is auto-detected)
 amazon-lyr login --cookies-file cookies.json
 
 # Run the MCP server
@@ -54,15 +54,16 @@ amazon-lyr serve --transport streamable-http --port 8000
 ## Authentication
 
 ```bash
-# JSON export of your amazon.com cookies (browser import is broken)
+# JSON export of your Amazon cookies (browser import is broken)
 amazon-lyr login --cookies-file cookies.json
 
 # Check status
 amazon-lyr status
 ```
 
-Reads need at-main; cart/wishlist/orders also need session-id + ubid-main.
-amazon.com only.
+Reads need the storefront's login token (at-main on amazon.com, at-acbca on
+amazon.ca); cart/wishlist/orders also need session-id + ubid-*. Set
+AMAZON_MARKETPLACE=amazon.ca to force a storefront.
 
 ## Notes
 

@@ -8,8 +8,9 @@ import sys
 
 from amazon_lyr import __version__
 from amazon_lyr.authentication import get_auth_status
-from amazon_lyr.cookie_import import import_from_browser
+from amazon_lyr.cookie_import import cookies_from_json, import_from_browser
 from amazon_lyr.logging_config import logger
+from amazon_lyr.marketplace import resolve_marketplace
 from amazon_lyr.session_state import clear_cookies, save_cookies
 
 # ── TOON helpers ──────────────────────────────────────────────────────────
@@ -103,7 +104,7 @@ def _home_view() -> None:
     print()
     print("next steps:")
     if mode == "none":
-        print("  amazon-lyr login --cookies-file c.json   # exported amazon.com cookies")
+        print("  amazon-lyr login --cookies-file c.json   # exported Amazon cookies")
     else:
         print('  amazon-lyr search "mechanical keyboard"')
         print('  MCP config: {"command": "amazon-lyr", "args": ["serve"]}')
@@ -142,14 +143,11 @@ async def run_command(args) -> None:  # noqa: ANN001, C901 - flat dispatch is fi
             from pathlib import Path
 
             try:
-                data = json.loads(Path(args.cookies_file).read_text())
-                if not isinstance(data, dict):
-                    raise ValueError("cookies file must be a JSON object")
-                cookies = {str(k): str(v) for k, v in data.items()}
+                cookies = cookies_from_json(json.loads(Path(args.cookies_file).read_text()))
             except (OSError, json.JSONDecodeError, ValueError) as e:
                 axi_error(
                     f"Could not read cookies file {args.cookies_file!r}: {e}",
-                    hint='Export cookies as a JSON object like {"at-main": "..."}.',
+                    hint='Use a cookie-editor JSON export, or an object like {"at-main": "..."}.',
                 )
         else:
             try:
@@ -157,12 +155,17 @@ async def run_command(args) -> None:  # noqa: ANN001, C901 - flat dispatch is fi
             except ImportError as e:
                 axi_error(
                     str(e),
-                    hint="Or use --cookies-file with a JSON export of your amazon.com cookies.",
+                    hint="Or use --cookies-file with a JSON export of your Amazon cookies.",
                 )
-        if not any(c in cookies for c in ("at-main",)):
+        try:
+            market = resolve_marketplace(cookies)
+        except ValueError as e:
+            axi_error(str(e), hint="e.g. AMAZON_MARKETPLACE=amazon.ca amazon-lyr login ...")
+        if market.login_cookie not in cookies:
             axi_error(
-                "Imported cookies are missing at-main (the Amazon login token).",
-                hint="Log in to amazon.com in the selected browser first, then retry.",
+                f"Imported cookies are missing {market.login_cookie} "
+                f"(the {market.domain} login token).",
+                hint=f"Log in to {market.domain} in your browser, export again, then retry.",
             )
         from amazon_lyr.dependencies import reset_client  # noqa: PLC0415
 
@@ -193,7 +196,7 @@ async def run_command(args) -> None:  # noqa: ANN001, C901 - flat dispatch is fi
 
             if not validate_write_session():
                 axi_error(
-                    "Cart writes need full session cookies (at-main + session-id/ubid-main).",
+                    "Cart writes need full session cookies (login token + session-id/ubid).",
                     hint="Run `amazon-lyr login` to re-import cookies from your browser.",
                 )
             data = await client.add_to_cart(args.asin, quantity=args.quantity)

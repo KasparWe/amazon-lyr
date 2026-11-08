@@ -43,7 +43,8 @@ amazon_lyr/
 ├── authentication.py  # validate_session / get_auth_status
 ├── cookie_import.py   # obscura-core extractor (optional extra) / JSON file
 ├── session_state.py   # cookie persistence (~/.config/amazon-lyr/cookies.json)
-├── constants.py       # endpoints, captcha markers, retry policy
+├── constants.py       # endpoints, captcha markers, retry policy, kill switches
+├── marketplace.py     # storefront allowlist → base URL, cookie names/domain
 ├── exceptions.py, error_handler.py, ratelimit.py, logging_config.py
 ├── scraping/
 │   ├── api_client.py  # curl_cffi chrome impersonation; captcha/signin detection;
@@ -77,6 +78,8 @@ Key invariants:
   (https + Amazon domain; checkout paths/fields refused while ordering is off).
   Redirects are followed by hand — never pass `allow_redirects=True`.
 - `tests/test_kill_switch.py` runs against the shipped constants; keep it green.
+- Never hard-code amazon.com URLs or `at-main`: use the client's `_base` /
+  `resolve_marketplace()`. New storefronts go in `MARKETPLACES` only.
 - Tests never hit live Amazon — fixture HTML strings or FakeSession.
 
 ## Release Process

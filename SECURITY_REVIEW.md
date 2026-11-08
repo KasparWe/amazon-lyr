@@ -27,7 +27,7 @@ Both issues are fixed in the `security-hardening` branch. Buying, cancelling and
 | L4 | Low | **`load_dotenv()` reads `.env` from whatever directory the server starts in.** That file can set `AMAZON_COOKIES`, `AMAZON_MARKETPLACE` and `HOST`. | Accepted; M3 and M4 limit the damage |
 | L5 | Low | **`scripts/genome` is an 8,000-line vendored doc tool** that runs shell commands listed in `genome.toml`. It isn't part of the installed package and CI doesn't run it. | Safe to delete |
 | L6 | Low | **Order-confirmation detection is loose:** any page containing "thank you" counts as a confirmation. | Moot while ordering is off |
-| I1 | Info | **amazon.com only.** The cookie names (`at-main`, `ubid-main`), the cookie domain `.amazon.com` and the cookie-import domain are hard-coded. Setting `AMAZON_MARKETPLACE=https://www.amazon.ca` won't authenticate, because amazon.ca uses `at-acbca` and `ubid-acbca`. | Not changed |
+| I1 | Info | **amazon.com only.** The cookie names (`at-main`, `ubid-main`), the cookie domain `.amazon.com` and the cookie-import domain are hard-coded. Setting `AMAZON_MARKETPLACE=https://www.amazon.ca` won't authenticate, because amazon.ca uses `at-acbca` and `ubid-acbca`. | **Fixed:** `amazon_lyr/marketplace.py` maps an allowlist of storefronts to their cookie names; cookies, requests and the guard are scoped to the chosen storefront's domain, and `AMAZON_MARKETPLACE` must be one of them (closes the L4 `.env` redirect angle) |
 | I2 | Info | **Project maturity:** one maintainer, 27 commits, about 3 weeks old. Upstream CI would fail its own `ruff format --check`. | Formatting fixed |
 
 ## What the kill switch does
