@@ -77,18 +77,53 @@ def is_logged_in(cookies: dict[str, str], market: Marketplace) -> bool:
     return bool(cookies.get(market.login_cookie)) and "session-id" in cookies
 
 
-async def _read_devtools_endpoint(profile: Path, proc: subprocess.Popen, deadline: float) -> str:
+def _chrome_failure(problem: str, chrome: str, log: Path) -> AmazonError:
+    """Error with Chrome's own last stderr lines, its version and likely fixes."""
+    try:
+        lines = [
+            ln.strip()
+            for ln in log.read_text(errors="replace").splitlines()
+            if ln.strip() and "mach_o_image_annotations_reader" not in ln
+        ]
+    except OSError:
+        lines = []
+    try:
+        version = subprocess.run(
+            [chrome, "--version"], capture_output=True, text=True, timeout=10
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        version = ""
+    parts = [problem]
+    if version:
+        parts.append(f"Browser: {version} ({chrome}).")
+    if lines:
+        parts.append("Chrome said: " + " | ".join(lines[-4:]))
+    if os.getenv("SSH_CONNECTION"):
+        parts.append(
+            "This is an SSH session, where Chrome can't open a window. Run the login "
+            "on a computer with a desktop and add --send-to <this host>."
+        )
+    parts.append(
+        "If Chrome is outdated, update it (or point CHROME_PATH at a current "
+        "Chrome/Chromium), or log in from another computer with --send-to."
+    )
+    return AmazonError(" ".join(parts))
+
+
+async def _read_devtools_endpoint(
+    profile: Path, proc: subprocess.Popen, deadline: float, chrome: str, log: Path
+) -> str:
     """Chrome writes '<port>\\n<ws path>' to DevToolsActivePort once it's listening."""
     marker = profile / "DevToolsActivePort"
     while time.monotonic() < deadline:
         if proc.poll() is not None:
-            raise AmazonError("Chrome exited before it was ready.")
+            raise _chrome_failure("Chrome exited before it was ready.", chrome, log)
         if marker.exists():
             lines = marker.read_text().split()
             if len(lines) >= 2 and lines[0].isdigit():
                 return f"ws://127.0.0.1:{lines[0]}{lines[1]}"
         await asyncio.sleep(0.2)
-    raise AmazonError("Chrome didn't open its DevTools port in time.")
+    raise _chrome_failure("Chrome didn't open its DevTools port within 30s.", chrome, log)
 
 
 async def capture_cookies(
@@ -152,6 +187,8 @@ async def interactive_login(market: Marketplace, timeout: float = 600) -> dict[s
     profile = Path(tempfile.mkdtemp(prefix="amazon-lyr-login-"))
     profile.chmod(0o700)
     start_url = f"{market.base_url}/gp/css/homepage.html"
+    log_fd, log_name = tempfile.mkstemp(prefix="amazon-lyr-chrome-", suffix=".log")
+    log = Path(log_name)
     proc = subprocess.Popen(
         [
             chrome,
@@ -164,11 +201,12 @@ async def interactive_login(market: Marketplace, timeout: float = 600) -> dict[s
             start_url,
         ],
         stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stderr=log_fd,
     )
+    os.close(log_fd)
     ws_url = None
     try:
-        ws_url = await _read_devtools_endpoint(profile, proc, time.monotonic() + 30)
+        ws_url = await _read_devtools_endpoint(profile, proc, time.monotonic() + 30, chrome, log)
         logger.info("Waiting for sign-in to %s in the Chrome window…", market.domain)
         return await capture_cookies(ws_url, market, timeout)
     finally:
@@ -176,6 +214,7 @@ async def interactive_login(market: Marketplace, timeout: float = 600) -> dict[s
             await _close_browser(ws_url)
         _stop(proc)
         shutil.rmtree(profile, ignore_errors=True)
+        log.unlink(missing_ok=True)
 
 
 def send_cookies_over_ssh(cookies: dict[str, str], host: str) -> str:

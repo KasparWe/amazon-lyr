@@ -188,3 +188,25 @@ def test_cli_interactive_send_to_does_not_save_locally(isolated_config, monkeypa
     assert sent["h"] == "hermes" and sent["c"]["at-acbca"] == "t"
     assert not get_cookies_path().exists(), "--send-to must not leave cookies on this machine"
     assert "remote ok" in capsys.readouterr().out
+
+
+async def test_chrome_crash_reports_its_stderr_and_ssh_hint(tmp_path, monkeypatch):
+    script = tmp_path / "crashy-chrome"
+    script.write_text(
+        f"#!{sys.executable}\n"
+        "import sys\n"
+        "if '--version' in sys.argv: print('Google Chrome 119.0.6045.123'); sys.exit(0)\n"
+        "sys.stderr.write('[x:WARNING:mach_o_image_annotations_reader.cc] noise\\n')\n"
+        "sys.stderr.write('FATAL: could not connect to window server\\n')\n"
+        "sys.exit(1)\n"
+    )
+    script.chmod(script.stat().st_mode | stat.S_IXUSR)
+    monkeypatch.setenv("CHROME_PATH", str(script))
+    monkeypatch.setenv("SSH_CONNECTION", "1.2.3.4 5 6.7.8.9 22")
+    with pytest.raises(AmazonError) as exc:
+        await il.interactive_login(CA, timeout=5)
+    msg = str(exc.value)
+    assert "Chrome exited before it was ready" in msg
+    assert "window server" in msg and "mach_o" not in msg
+    assert "Google Chrome 119" in msg
+    assert "SSH session" in msg and "--send-to" in msg
