@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "amazon-lyr"
-version = "0.6.0"
+version = "0.6.1"
 description = "Amazon research & shopping MCP server using browser cookies and curl_cffi"
 requires-python = ">=3.11"
 dependencies = [

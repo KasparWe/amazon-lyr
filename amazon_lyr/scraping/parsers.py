@@ -552,7 +552,14 @@ def parse_list_item_for(html: str, asin: str) -> dict | None:
             (ext and f"ASIN:{asin}" in ext.group(1)) or (href_asin and href_asin.group(1) == asin)
         ):
             continue
-        token = block.find("input", attrs={"name": "anti-csrftoken-a2z"})
+        # Each row also carries its "Add to cart" button's token (inside wl-atc-*);
+        # the list controls use the other one.
+        tokens = [
+            t
+            for t in block.find_all("input", attrs={"name": "anti-csrftoken-a2z"})
+            if not any(str(p.get("id", "")).startswith("wl-atc") for p in t.parents)
+        ]
+        token = tokens[-1] if tokens else None
         if token is None:  # fall back to the nearest token before the item
             token = block.find_previous("input", attrs={"name": "anti-csrftoken-a2z"})
         return {

@@ -34,6 +34,7 @@ CREATE_FORM = (
 LIST_PAGE = """
 <ul><li class="a-spacing-base g-item-sortable" data-itemid="IYPNRBJXSB869"
      data-reposition-action-params='{"itemExternalId":"ASIN:B000000009|A2EUQ1WTGCTBG2"}'>
+  <form id="wl-atc-IYPNRBJXSB869"><input type="hidden" name="anti-csrftoken-a2z" value="atc-tok"></form>
   <input type="hidden" name="anti-csrftoken-a2z" value="item-tok">
   <a id="itemName_IYPNRBJXSB869" title="Gooseneck Kettle" href="/dp/B000000009/?coliid=I1">Gooseneck Kettle</a>
 </li></ul>"""
