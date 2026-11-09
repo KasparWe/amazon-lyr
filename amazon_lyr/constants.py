@@ -30,7 +30,13 @@ CART_ADD_PATH = "/cart/add-to-cart"
 CART_VIEW_PATH = "/gp/cart/view.html"
 CHECKOUT_START_PATH = "/gp/checkout/portal/checkout.html"
 WISHLIST_PATH = "/hz/wishlist/ls"
-WISHLIST_ADD_PATH = "/hz/wishlist/lsadd"
+LISTS_API_PATH = "/hz/wishlist/addtolist/atlaapi"
+LIST_ADD_ITEM_PATH = "/hz/wishlist/additemtolist"
+LIST_CREATE_FORM_PATH = "/hz/wishlist/create"
+LIST_CREATE_PATH = "/hz/wishlist/create/newlist"
+LIST_REMOVE_ITEM_PATH = "/hz/wishlist/removeitem"
+LIST_VENDOR_ID = "website.wishlist.detail.add"
+LIST_PRIVACY = {"private": "PRIVATE", "shared": "SHARED", "public": "PUBLIC"}
 SIGNIN_MARKER = "/ap/signin"
 
 # Checkout workflow safety markers.

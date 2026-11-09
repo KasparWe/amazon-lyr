@@ -1,7 +1,7 @@
 <p align="center">
   <img src="https://github.com/KasparWe/amazon-lyr/actions/workflows/ci.yml/badge.svg" alt="CI">
   <img src="https://img.shields.io/badge/python-3.11%2B-2b6cb0?style=flat&logo=python&logoColor=white" alt="Python 3.11+">
-  <img src="https://img.shields.io/badge/tools-17-c026d3?style=flat&logo=modelcontextprotocol&logoColor=white" alt="17 MCP tools">
+  <img src="https://img.shields.io/badge/tools-20-c026d3?style=flat&logo=modelcontextprotocol&logoColor=white" alt="20 MCP tools">
   <img src="https://img.shields.io/badge/license-MIT-059669?style=flat" alt="MIT">
 </p>
 
@@ -11,7 +11,7 @@
 > `amazon_lyr/constants.py` (`ORDERING_ENABLED`, `ORDER_CANCEL_ENABLED`,
 > `RETURNS_ENABLED` — all `False`). Those tools are not registered, the client
 > methods refuse, and the HTTP layer refuses any checkout request or redirect.
-> Search, product, reviews, cart, wishlist and order tracking work as normal.
+> Search, product, reviews, cart, lists and order tracking work as normal.
 > See [SECURITY_REVIEW.md](SECURITY_REVIEW.md).
 >
 > Install from this repo, not upstream (otherwise `amazon-lyr update` would pull
@@ -22,7 +22,7 @@
 
 <p align="center">
   <strong>Amazon research and shopping as MCP tools for AI agents</strong> — research
-  products and reviews, manage the cart and wishlist, track orders — all through
+  products and reviews, manage the cart and your lists, track orders — all through
   your own logged-in browser session. No PA-API keys. Checkout stays in your browser.
 </p>
 
@@ -36,7 +36,7 @@ This is one real conversation with an agent running `amazon-lyr` — no steps hi
 1. search_products("noise cancelling headphones", max_price=300, min_rating=4)
 2. review_insights("B0X1234567")            # star spread + keyword themes
 3. search_in_reviews("B0X1234567", query="broke")     # what actually breaks?
-4. add_to_cart("B0X1234567", quantity=1)     # or add_to_wishlist(...)
+4. add_to_cart("B0X1234567", quantity=1)     # or add_to_wishlist(asin, list_id)
    → you check out yourself in the browser
 5. get_orders()
 6. track_shipment("111-2223334-5556667")
@@ -51,7 +51,7 @@ fill the cart, but checkout happens in your browser — see [Safety model](#safe
 | | |
 |---|---|
 | **No API keys** | Speaks Amazon's own web endpoints over `curl_cffi` with Chrome TLS impersonation — the same session your browser has |
-| **More than scraping** | Cart mutations, wishlist writes, order details and shipment tracking |
+| **More than scraping** | Cart mutations, your lists (view, add, create, remove), order details and shipment tracking |
 | **Agent-native errors** | CAPTCHAs, sign-out redirects and soft throttles surface as typed errors with recovery hints (`possibly_throttled`, manual-fallback URLs) — never silent garbage |
 
 ## How it works
@@ -60,7 +60,7 @@ fill the cart, but checkout happens in your browser — see [Safety model](#safe
 browser cookies ──▶ AmazonClient (curl_cffi, captcha-aware)
                         │
                         ▼
-              bs4 parsers ──▶ normalized dicts ──▶ 17 FastMCP tools
+              bs4 parsers ──▶ normalized dicts ──▶ 20 FastMCP tools
                                                    (readOnly / destructive annotations)
 ```
 
@@ -108,7 +108,7 @@ amazon-lyr serve                             # MCP server (stdio)
 }
 ```
 
-## Tools (17)
+## Tools (20)
 
 | Category | Tools |
 |----------|-------|
@@ -116,7 +116,7 @@ amazon-lyr serve                             # MCP server (stdio)
 | **Product** | `get_product`, `compare_products` (up to 5 ASINs) |
 | **Reviews** | `get_reviews`, `review_insights`, `search_in_reviews` |
 | **Cart** | `add_to_cart`, `view_cart`, `update_cart_quantity`, `remove_from_cart` |
-| **Wishlist** | `add_to_wishlist`, `get_wishlist` |
+| **Lists** | `get_lists`, `get_wishlist` (any list), `add_to_wishlist` (to any list), `create_list` (private/shared/public), `remove_from_list` |
 | **Orders** | `get_orders`, `get_order_details`, `track_shipment` |
 | **Returns** | `list_returns` (read-only) |
 | **Session** | `get_session_status` |

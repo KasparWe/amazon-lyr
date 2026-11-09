@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from typing import Any
 from urllib.parse import urljoin, urlsplit
@@ -18,6 +19,13 @@ from amazon_lyr.constants import (
     CHECKOUT_START_PATH,
     CHECKOUT_VERIFICATION_MARKERS,
     DEFAULT_USER_AGENT,
+    LIST_ADD_ITEM_PATH,
+    LIST_CREATE_FORM_PATH,
+    LIST_CREATE_PATH,
+    LIST_PRIVACY,
+    LIST_REMOVE_ITEM_PATH,
+    LIST_VENDOR_ID,
+    LISTS_API_PATH,
     MAX_RETRIES,
     ORDER_DETAILS_PATH,
     ORDERS_PATH,
@@ -31,7 +39,6 @@ from amazon_lyr.constants import (
     REVIEWS_PATH,
     SEARCH_PATH,
     SIGNIN_MARKER,
-    WISHLIST_ADD_PATH,
     WISHLIST_PATH,
 )
 from amazon_lyr.exceptions import (
@@ -47,11 +54,15 @@ from amazon_lyr.ratelimit import RateLimiter
 from amazon_lyr.scraping.parsers import (
     _ORDER_ID_RE,
     build_review_insights,
+    find_first_csrf,
+    find_list_widget_csrf,
     parse_add_to_cart_form,
     parse_cancel_form,
     parse_cart,
     parse_cart_form_for,
     parse_checkout_form,
+    parse_list_item_for,
+    parse_lists,
     parse_order_confirmation,
     parse_order_details,
     parse_orders,
@@ -94,6 +105,18 @@ _CART_DELETE_KEY_RE = re.compile(r"submit\.delete(?:-active|-saved)?\.[A-Za-z0-9
 _CART_QTY_FIELD_RE = re.compile(r"quantityBox\.[A-Za-z0-9._:-]{1,128}")
 _REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 _MAX_REDIRECTS = 10
+
+
+_LIST_ID_RE = re.compile(r"[A-Z0-9]{8,20}")
+
+
+def _validate_list_id(list_id: str) -> str:
+    value = str(list_id or "").strip().upper()
+    if not _LIST_ID_RE.fullmatch(value):
+        raise AmazonError(
+            f"{list_id!r} is not an Amazon list id (8-20 letters/digits, e.g. from get_lists)."
+        )
+    return value
 
 
 def _require_enabled(flag_name: str, action: str) -> None:
@@ -296,10 +319,11 @@ class AmazonClient:
         html = await self.get_html(f"{REVIEWS_PATH}/{asin}", params=params)
         return parse_reviews(html, asin=asin)
 
-    async def get_wishlist(self, wishlist_id: str | None = None) -> dict:
-        params = {"cid": wishlist_id} if wishlist_id else None
-        html = await self.get_html(WISHLIST_PATH, params=params)
-        return parse_wishlist(html)
+    async def get_wishlist(self, list_id: str | None = None) -> dict:
+        """Items on one list (your default list when list_id is None)."""
+        path = f"{WISHLIST_PATH}/{_validate_list_id(list_id)}" if list_id else WISHLIST_PATH
+        result = parse_wishlist(await self.get_html(path))
+        return {"list_id": list_id, **result}
 
     async def get_orders(self, status_filter: str | None = None) -> dict:
         params = {}
@@ -389,55 +413,142 @@ class AmazonClient:
             "cart": cart,
         }
 
-    async def add_to_wishlist(self, asin: str) -> dict:
-        """Add an ASIN to the default wishlist via the /hz/wishlist/lsadd flow.
+    # ── lists (wish lists) ───────────────────────────────────────────────
 
-        Best-effort by design: needs a CSRF token discovered from the wishlist
-        page; raises ParseError with manual guidance when Amazon withholds it.
-        """
-        asin = _validate_asin(asin)
-        ls_html = await self.get_html(WISHLIST_PATH, params={"asin": asin})
-        token = self._extract_csrf_token(ls_html)
+    async def post_xhr(self, path: str, data: dict, csrf: str, referer: str | None = None) -> str:
+        """POST like Amazon's own list widgets: form body + CSRF token in a header."""
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "X-Requested-With": "XMLHttpRequest",
+            "Accept": "*/*",
+            "anti-csrftoken-a2z": csrf,
+        }
+        if referer:
+            headers["Referer"] = referer
+        resp = await self._request("POST", path, data=data, headers=headers)
+        return resp.text
 
-        data = {"asin": asin, "csrfToken": token, "ref_": "lyr_add"}
+    async def get_lists(self) -> dict:
+        """All your lists (id, name, privacy), as shown in the Add to List menu."""
+        params = {
+            "sortMethod": "0",
+            "type": "wishlist",
+            "useAll": "0",
+            "sourceVendorId": LIST_VENDOR_ID,
+        }
+        raw = await self.get_html(LISTS_API_PATH, params=params)
         try:
-            resp_html = await self.post_form(
-                WISHLIST_ADD_PATH, data=data, referer=self._base + WISHLIST_PATH
-            )
-        except NotFoundError:
-            raise ParseError(
-                f"{self._market.domain} no longer accepts the list-add request this tool "
-                f"uses. Add it in the browser: {self._base}{PRODUCT_PATH}/{asin} → "
-                "Add to List. get_wishlist still works."
-            ) from None
-        low = resp_html.lower()
-        if any(m in low for m in ("added to your list", "item added", "added to wishlist")):
-            return {"status": "ok", "asin": asin}
-        # Verify by membership — some variants return sparse responses.
-        wish = await self.get_wishlist()
-        if any(i.get("asin") == asin for i in wish.get("items", [])):
-            return {"status": "ok", "asin": asin, "verified_by": "wishlist_scan"}
-        raise ParseError(
-            f"Could not confirm {asin} was added to the wishlist. Verify manually at "
-            f"{self._base}/hz/wishlist/ls — the list-add flow may have changed."
-        )
+            html = json.loads(raw).get("html", "")
+        except (ValueError, AttributeError):
+            html = raw
+        return parse_lists(html)
 
-    @staticmethod
-    def _extract_csrf_token(html: str) -> str:
-        """CSRF tokens appear as hidden inputs or embedded JSON on wishlist pages."""
-        soup = BeautifulSoup(html, "html.parser")
-        node = soup.select_one('input[name="anti-csrftoken-a2z"], input[name="csrfToken"]')
-        if node and node.get("value"):
-            return str(node["value"])
-        match = re.search(r'"csrfToken"\s*:\s*"([^"]{16,})"', html) or re.search(
-            r'anti-csrftoken-a2z(?:%3A|=|%3D|["\s:=]+)([A-Za-z0-9+/_-]{32,})', html
+    async def _resolve_list_id(self, list_id: str | None) -> str:
+        if list_id:
+            return _validate_list_id(list_id)
+        lists = (await self.get_lists())["lists"]
+        if not lists:
+            raise AmazonError("You have no lists yet — create one with create_list.")
+        return lists[0]["list_id"]
+
+    async def add_to_list(self, asin: str, list_id: str | None = None) -> dict:
+        """Add an ASIN to one of your lists (the first list when list_id is None)."""
+        asin = _validate_asin(asin)
+        target = await self._resolve_list_id(list_id)
+        product_url = f"{self._base}{PRODUCT_PATH}/{asin}"
+        token = find_list_widget_csrf(await self.get_html(f"{PRODUCT_PATH}/{asin}"))
+        if not token:
+            raise ParseError(
+                f"{asin} has no Add to List button on {self._market.domain} (or the page "
+                f"changed). Check {product_url}"
+            )
+        data = {
+            "asin": asin,
+            "vendorId": LIST_VENDOR_ID,
+            "listExternalId": target,
+            "listType": "wishlist",
+            "isAjax": "1",
+        }
+        resp = (await self.post_xhr(LIST_ADD_ITEM_PATH, data, token, referer=product_url)).lower()
+        if "already in" in resp:
+            status = "already_in_list"
+        elif "added to" in resp:
+            status = "ok"
+        else:
+            listed = await self.get_wishlist(target)
+            status = (
+                "ok" if any(i.get("asin") == asin for i in listed["items"]) else "not_confirmed"
+            )
+        return {"status": status, "asin": asin, "list_id": target}
+
+    async def add_to_wishlist(self, asin: str, list_id: str | None = None) -> dict:
+        return await self.add_to_list(asin, list_id)
+
+    async def create_list(
+        self, name: str, privacy: str = "private", asin: str | None = None
+    ) -> dict:
+        """Create a new wish list (optionally adding a first item) and return its id."""
+        name = " ".join(str(name or "").split())
+        if not 1 <= len(name) <= 50:
+            raise AmazonError("List name must be 1-50 characters.")
+        privacy_status = LIST_PRIVACY.get(str(privacy).lower())
+        if privacy_status is None:
+            raise AmazonError(f"privacy must be one of {sorted(LIST_PRIVACY)}.")
+        asin = _validate_asin(asin) if asin else None
+        form = await self.get_html(
+            LIST_CREATE_FORM_PATH,
+            params={
+                "isPopover": "1",
+                "isCreateAndAdd": "1" if asin else "0",
+                "sourceVendorId": LIST_VENDOR_ID,
+                "createIngressName": "DESKTOP_DETAIL_PAGE",
+            },
         )
-        if match:
-            return match.group(1)
-        raise ParseError(
-            "No CSRF token found on the wishlist page — sign-in cookies may be stale "
-            "(re-run `amazon-lyr login`) or the page layout changed."
-        )
+        token = find_first_csrf(form)
+        if not token:
+            raise ParseError("Couldn't load Amazon's create-list form (no CSRF token).")
+        data = {
+            "listName": name,
+            "sid": self._cookies.get("session-id", ""),
+            "vendorId": LIST_VENDOR_ID,
+            "privacyStatus": privacy_status,
+            "listType": "WishList",
+            "isJson": "true",
+        }
+        if asin:
+            data = {"asin": asin, **data}
+        await self.post_xhr(LIST_CREATE_PATH, data, token, referer=f"{self._base}{WISHLIST_PATH}")
+        created = [lst for lst in (await self.get_lists())["lists"] if lst["name"] == name]
+        if not created:
+            raise ParseError(
+                f"Amazon didn't confirm the new list {name!r}; check {self._base}{WISHLIST_PATH}"
+            )
+        return {"status": "ok", "list": created[0], "added_asin": asin}
+
+    async def remove_from_list(self, list_id: str, asin: str) -> dict:
+        """Remove one item (by ASIN) from one of your lists."""
+        target = _validate_list_id(list_id)
+        asin = _validate_asin(asin)
+        list_url = f"{self._base}{WISHLIST_PATH}/{target}"
+        item = parse_list_item_for(await self.get_html(f"{WISHLIST_PATH}/{target}"), asin)
+        if item is None:
+            raise AmazonError(f"{asin} isn't on list {target} (or not on its first page).")
+        if not item["item_id"] or not item["csrf"]:
+            raise ParseError(f"Couldn't read the remove controls for {asin}; check {list_url}")
+        data = {
+            "sid": self._cookies.get("session-id", ""),
+            "listExternalId": target,
+            "itemTitle": item["title"] or "",
+            "itemExternalId": item["item_external_id"],
+            "itemId": item["item_id"],
+            "listType": "WishList",
+            "sort": "date-added",
+            "filter": "unpurchased",
+        }
+        await self.post_xhr(LIST_REMOVE_ITEM_PATH, data, item["csrf"], referer=list_url)
+        listed = await self.get_wishlist(target)
+        gone = all(i.get("asin") != asin for i in listed["items"])
+        return {"status": "ok" if gone else "uncertain", "asin": asin, "list_id": target}
 
     # ── checkout & ordering ──────────────────────────────────────────────
 

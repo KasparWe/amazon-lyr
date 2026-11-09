@@ -61,24 +61,51 @@ def register_cart_tools(mcp: FastMCP) -> None:
 
 def register_wishlist_tools(mcp: FastMCP) -> None:
     @mcp.tool(annotations={"readOnlyHint": True})
-    async def get_wishlist(wishlist_id: str | None = None) -> dict:
-        """List wishlist items for your account (or a shared wishlist id)."""
+    async def get_lists() -> dict:
+        """All your Amazon lists (wish lists): list_id, name and privacy
+        (private/shared/public). Use a list_id with the other list tools."""
         try:
             _require_write_session()
-            client = get_amazon_client()
-            return await client.get_wishlist(wishlist_id)
+            return await get_amazon_client().get_lists()
+        except Exception as e:
+            handle_api_error(e)
+
+    @mcp.tool(annotations={"readOnlyHint": True})
+    async def get_wishlist(list_id: str | None = None) -> dict:
+        """Items on one of your lists (list_id from get_lists); your default
+        list when list_id is omitted."""
+        try:
+            _require_write_session()
+            return await get_amazon_client().get_wishlist(list_id)
         except Exception as e:
             handle_api_error(e)
 
     @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True})
-    async def add_to_wishlist(asin: str) -> dict:
-        """Add a product to your default wishlist. Amazon has changed this flow and
-        it can fail; if it does, tell the user to use Add to List on the product
-        page. Needs full session cookies."""
+    async def add_to_wishlist(asin: str, list_id: str | None = None) -> dict:
+        """Add a product to one of your lists (list_id from get_lists; the first
+        list when omitted). status: ok, already_in_list or not_confirmed."""
         try:
             _require_write_session()
-            client = get_amazon_client()
-            return await client.add_to_wishlist(asin)
+            return await get_amazon_client().add_to_list(asin, list_id)
+        except Exception as e:
+            handle_api_error(e)
+
+    @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False})
+    async def create_list(name: str, privacy: str = "private", asin: str | None = None) -> dict:
+        """Create a new list. privacy: private (default), shared or public.
+        Optionally pass an asin to add as the first item. Returns the new list_id."""
+        try:
+            _require_write_session()
+            return await get_amazon_client().create_list(name, privacy=privacy, asin=asin)
+        except Exception as e:
+            handle_api_error(e)
+
+    @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True})
+    async def remove_from_list(list_id: str, asin: str) -> dict:
+        """Remove one product (by asin) from one of your lists."""
+        try:
+            _require_write_session()
+            return await get_amazon_client().remove_from_list(list_id, asin)
         except Exception as e:
             handle_api_error(e)
 

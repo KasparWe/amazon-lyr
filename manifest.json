@@ -62,7 +62,7 @@
     },
     {
       "name": "get_wishlist",
-      "description": "List wishlist items"
+      "description": "Items on one of your lists"
     },
     {
       "name": "get_orders",
@@ -86,7 +86,19 @@
     },
     {
       "name": "add_to_wishlist",
-      "description": "Add an ASIN to your default wishlist"
+      "description": "Add an ASIN to one of your lists"
+    },
+    {
+      "name": "get_lists",
+      "description": "All your lists: id, name, privacy"
+    },
+    {
+      "name": "create_list",
+      "description": "Create a new list (private/shared/public)"
+    },
+    {
+      "name": "remove_from_list",
+      "description": "Remove an ASIN from one of your lists"
     }
   ],
   "capabilities": {

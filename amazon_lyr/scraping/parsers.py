@@ -486,20 +486,82 @@ def parse_wishlist(html: str) -> dict:
             or re.search(r"ASIN:([A-Z0-9]{10})", str(block.get("data-reposition-action-params")))
             or re.search(r"itemName_([A-Z0-9]{10})$", str(link.get("id")) if link else "")
         )
-        items.append(
-            {
-                "asin": asin_match.group(1) if asin_match else None,
-                "name": _text(link),
-                "price": price_text,
-                "price_value": _parse_price(price_text),
-            }
-        )
+        entry = {
+            "asin": asin_match.group(1) if asin_match else None,
+            "name": _text(link),
+            "price": price_text,
+            "price_value": _parse_price(price_text),
+        }
+        if block.get("data-itemid"):
+            entry["item_id"] = str(block.get("data-itemid"))
+        items.append(entry)
     signed_in = soup.select_one("#nav-link-accountList-nav-line-1") is not None
     return {
         "item_count": len(items),
         "items": items,
         "note": None if signed_in else "Wishlist may be empty or require sign-in cookies.",
     }
+
+
+_LIST_ID_RE = re.compile(r"atwl-link-to-list-([A-Z0-9]{8,20})$")
+_PRIVACY_WORDS = {"private", "public", "shared"}
+
+
+def parse_lists(html: str) -> dict:
+    """Your lists from the add-to-list dropdown (atlaapi's ``html``)."""
+    soup = _soup(html)
+    lists: list[dict] = []
+    for link in soup.select('a[id^="atwl-link-to-list-"]'):
+        match = _LIST_ID_RE.search(str(link.get("id", "")))
+        if not match:
+            continue
+        col = link.select_one(".a-col-right") or link
+        parts = list(col.stripped_strings)
+        privacy = None
+        if parts and parts[-1].lower() in _PRIVACY_WORDS:
+            privacy = parts.pop().lower()
+        lists.append(
+            {"list_id": match.group(1), "name": " ".join(parts) or None, "privacy": privacy}
+        )
+    return {"count": len(lists), "lists": lists}
+
+
+def find_list_widget_csrf(html: str) -> str | None:
+    """CSRF token of the product page's add-to-list widget (right after its script)."""
+    candidates = list(re.finditer(r'name="anti-csrftoken-a2z" value="([^"]+)"', html))
+    for m in candidates:
+        if "atwl" in html[max(0, m.start() - 2500) : m.start()]:
+            return m.group(1)
+    return None
+
+
+def find_first_csrf(html: str) -> str | None:
+    m = re.search(r'name="anti-csrftoken-a2z" value="([^"]+)"', html)
+    return m.group(1) if m else None
+
+
+def parse_list_item_for(html: str, asin: str) -> dict | None:
+    """itemId / itemExternalId / title / CSRF token for one ASIN on a list page."""
+    soup = _soup(html)
+    for block in soup.select("li.g-item-sortable"):
+        params = str(block.get("data-reposition-action-params") or "")
+        ext = re.search(r'"itemExternalId"\s*:\s*"([^"]+)"', params)
+        link = block.select_one('a[id^="itemName_"]')
+        href_asin = re.search(r"/dp/([A-Z0-9]{10})", str(link.get("href", "")) if link else "")
+        if not (
+            (ext and f"ASIN:{asin}" in ext.group(1)) or (href_asin and href_asin.group(1) == asin)
+        ):
+            continue
+        token = block.find("input", attrs={"name": "anti-csrftoken-a2z"})
+        if token is None:  # fall back to the nearest token before the item
+            token = block.find_previous("input", attrs={"name": "anti-csrftoken-a2z"})
+        return {
+            "item_id": str(block.get("data-itemid") or "") or None,
+            "item_external_id": ext.group(1) if ext else f"ASIN:{asin}",
+            "title": (link.get("title") or _text(link)) if link else None,
+            "csrf": str(token.get("value")) if token and token.get("value") else None,
+        }
+    return None
 
 
 # ── order details / tracking / returns ───────────────────────────────────

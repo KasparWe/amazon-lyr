@@ -8,7 +8,7 @@ from conftest import (
     session_getter,
 )
 
-from amazon_lyr.exceptions import AmazonError, ParseError
+from amazon_lyr.exceptions import AmazonError
 from amazon_lyr.scraping.api_client import AmazonClient
 from amazon_lyr.scraping.parsers import parse_checkout_form, parse_order_confirmation
 
@@ -65,13 +65,6 @@ CONFIRMATION_HTML = """
 OTP_HTML = (
     "<html><body>Please verify your card. Enter the one-time password sent to you.</body></html>"
 )
-
-WISHLIST_LS_WITH_TOKEN = """
-<html><body>
-<input type="hidden" name="anti-csrftoken-a2z" value="wltok123">
-<div class="g-item-block"><a id="itemName_B0AAAABBBB">Existing thing</a></div>
-</body></html>
-"""
 
 
 @pytest.fixture(autouse=True)
@@ -188,46 +181,3 @@ async def test_checkout_empty_cart_rejected(monkeypatch):
     client, _ = _client(monkeypatch, [FakeResponse(empty)])
     with pytest.raises(AmazonError, match="Cart is empty"):
         await client.checkout_preview()
-
-
-# ── wishlist add ─────────────────────────────────────────────────────────
-
-WISHLIST_ADDED = "<html><body>Item added to your list</body></html>"
-
-
-async def test_add_to_wishlist_happy_path_with_token_and_verification(monkeypatch):
-    added_wishlist = WISHLIST_LS_WITH_TOKEN.replace(
-        '<a id="itemName_B0AAAABBBB">', '<a id="itemName_B0NEWASIN1">'
-    )
-    responses = [
-        FakeResponse(WISHLIST_LS_WITH_TOKEN),  # token discovery (params asin=...)
-        FakeResponse(WISHLIST_ADDED),  # lsadd POST response
-        FakeResponse(added_wishlist),  # membership verification scan
-    ]
-    client, fake = _client(monkeypatch, responses)
-    result = await client.add_to_wishlist("b0newasin1")
-    assert result["status"] == "ok"
-    post = fake.calls[1]
-    assert "/hz/wishlist/lsadd" in str(post["url"])
-    assert post["data"]["asin"] == "B0NEWASIN1"
-    assert post["data"]["csrfToken"] == "wltok123"
-
-
-async def test_add_to_wishlist_no_token_raises_with_login_hint(monkeypatch):
-    client, _ = _client(
-        monkeypatch,
-        [FakeResponse("<html><body>mystery page, no tokens here</body></html>")],
-    )
-    with pytest.raises(ParseError, match="amazon-lyr login"):
-        await client.add_to_wishlist("B0X1234567")
-
-
-async def test_add_to_wishlist_unconfirmed_raises_manual_guidance(monkeypatch):
-    responses = [
-        FakeResponse(WISHLIST_LS_WITH_TOKEN),
-        FakeResponse("<html><body>something unexpected</body></html>"),
-        FakeResponse(WISHLIST_LS_WITH_TOKEN),  # membership scan: still absent
-    ]
-    client, _ = _client(monkeypatch, responses)
-    with pytest.raises(ParseError, match="hz/wishlist/ls"):
-        await client.add_to_wishlist("B0NEWASIN1")

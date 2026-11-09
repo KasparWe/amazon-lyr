@@ -38,7 +38,7 @@ amazon-lyr serve --transport streamable-http --port 8000
 }
 ```
 
-## Tools (17)
+## Tools (20)
 
 | Category | Tools |
 |------|-------------|
@@ -46,7 +46,7 @@ amazon-lyr serve --transport streamable-http --port 8000
 | **Product** | `get_product` (price, rating, features, specs), `compare_products` (up to 5 ASINs) |
 | **Reviews** | `get_reviews`, `review_insights` (star distribution, verified %, keyword themes incl. critical reviews), `search_in_reviews` (keyword scan across pages) |
 | **Cart** | `add_to_cart`, `view_cart`, `update_cart_quantity`, `remove_from_cart` (need full session) |
-| **Wishlist** | `get_wishlist`, `add_to_wishlist` (idempotent) |
+| **Lists** | `get_lists` (ids, names, privacy), `get_wishlist(list_id)`, `add_to_wishlist(asin, list_id)`, `create_list(name, privacy, asin)`, `remove_from_list(list_id, asin)` |
 | **Orders** | `get_orders`, `get_order_details` (items/totals/payment/invoice), `track_shipment` |
 | **Returns** | `list_returns` (read-only) |
 | **Session** | `get_session_status` |

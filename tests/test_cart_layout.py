@@ -136,6 +136,7 @@ def test_parse_wishlist_2026_list_items():
         "name": "Gooseneck Kettle",
         "price": "$45.99",
         "price_value": 45.99,
+        "item_id": "I1",
     }
 
 

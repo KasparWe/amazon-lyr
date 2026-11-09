@@ -54,7 +54,7 @@ amazon_lyr/
 └── tools/
     ├── search.py, product.py               # reads (readOnlyHint=True)
     ├── reviews.py                           # get_reviews / insights / keyword scan
-    ├── shopping.py                          # cart (incl. qty updates)/wishlist/get_orders
+    ├── shopping.py                          # cart, lists (get/add/create/remove), get_orders
     ├── order_mgmt.py                        # details/tracking/returns/cancellation
     └── session.py                           # auth status tool
 ```
@@ -81,6 +81,9 @@ Key invariants:
 - `tests/test_kill_switch.py` runs against the shipped constants; keep it green.
 - Never hard-code amazon.com URLs or `at-main`: use the client's `_base` /
   `resolve_marketplace()`. New storefronts go in `MARKETPLACES` only.
+- List/cart writes mirror Amazon's own widgets: CSRF token from the page the
+  user would be on, sent as the `anti-csrftoken-a2z` header (lists) or form
+  field (cart). There is deliberately no delete-list tool.
 - Tests never hit live Amazon — fixture HTML strings or FakeSession.
 
 ## Release Process
